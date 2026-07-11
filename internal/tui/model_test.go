@@ -405,6 +405,66 @@ func TestWinningPlayAnimatesThenScoreboard(t *testing.T) {
 	}
 }
 
+// TestOnlyWinnerHandHidden: only the player who threw their last card (now at 0)
+// renders an empty hand; every other player still shows their cards.
+func TestOnlyWinnerHandHidden(t *testing.T) {
+	m := New(nopCommander{}, "id", "hint", lipgloss.DefaultRenderer())
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	// Opponent C (seat 2, top) plays their last card and wins; you (seat 0) and the
+	// side opponents still hold cards.
+	win := protocol.StateSnapshot{
+		Phase: protocol.Finished, Rev: 1, YouSeat: 0,
+		Players: []protocol.PlayerView{
+			{Seat: 0, IsYou: true, CardCount: 4, Connected: true},
+			{Seat: 1, CardCount: 5, Connected: true},
+			{Seat: 2, CardCount: 0, Connected: true},
+			{Seat: 3, CardCount: 3, Connected: true},
+		},
+		YourHand: parseHand(t, "4D 5H 8C 2S"),
+		Table:    parseHand(t, "2H"), TableBy: 2, Turn: 2, Winner: 2,
+	}
+	m.Update(protocol.StateSnapshotMsg{Snap: win})
+	m.pileStep = pileSteps // land the slide
+
+	if strings.Contains(m.topBand(4, 80), "|") {
+		t.Error("the winner's hand (0 cards) should show no cards")
+	}
+	if !strings.Contains(m.sideBlock(m.playerAtRel(1), 8, true), "|") {
+		t.Error("left opponent still holds cards and should show them")
+	}
+	if !strings.Contains(m.sideBlock(m.playerAtRel(3), 8, false), "|") {
+		t.Error("right opponent still holds cards and should show them")
+	}
+	if !strings.Contains(m.selfBand(), "|") {
+		t.Error("your own hand still holds cards and should show them")
+	}
+	if !strings.Contains(m.renderGame(), "2H") {
+		t.Error("winning card should still land in the pile")
+	}
+
+	// And when you are the one who wins, your emptied hand shows no cards.
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	selfWin := win
+	selfWin.Rev = 2
+	selfWin.YourHand = nil
+	selfWin.Players = []protocol.PlayerView{
+		{Seat: 0, IsYou: true, CardCount: 0, Connected: true},
+		{Seat: 1, CardCount: 5, Connected: true},
+		{Seat: 2, CardCount: 6, Connected: true},
+		{Seat: 3, CardCount: 3, Connected: true},
+	}
+	selfWin.Table = parseHand(t, "2S")
+	selfWin.TableBy, selfWin.Turn, selfWin.Winner = 0, 0, 0
+	m.Update(protocol.StateSnapshotMsg{Snap: selfWin})
+	if strings.Contains(m.selfBand(), "|") {
+		t.Error("your emptied hand should show no cards")
+	}
+	if !strings.Contains(m.sideBlock(m.playerAtRel(1), 8, true), "|") {
+		t.Error("opponents who still hold cards should show them when you win")
+	}
+}
+
 // TestPileLingersWhenTrickResetsMidSlide: if the table clears while a play is still
 // sliding in (a trick won the instant it was played, e.g. disconnected opponents
 // auto-passing), the card finishes sliding and holds, then clears - it isn't cut off.

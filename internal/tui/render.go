@@ -148,6 +148,11 @@ func (m *Model) topBand(n, w int) string {
 	default:
 		return "" // 3 players: no top seat
 	}
+	if p.CardCount == 0 {
+		// No cards left (this player just played their last card and won): label only,
+		// keeping the band's 2-row height so the board doesn't shift.
+		return lipgloss.JoinVertical(lipgloss.Left, m.label(p), "")
+	}
 	top, bot := hFan(p.CardCount, w)
 	ftop, fbot := m.st.faint.Render(top), m.st.faint.Render(bot)
 	// The label rides row 0 and never moves (top and bot are the same width). The
@@ -220,6 +225,9 @@ func pileNudge(rel, n int) (dx, dy int) {
 // edge (left player's big card at the bottom, right's at the top). On turn each
 // card reaches toward the centre; off turn it recedes, so the label never moves.
 func (m *Model) sideBlock(p protocol.PlayerView, budget int, leftSide bool) string {
+	if p.CardCount == 0 {
+		return m.label(p) // no cards left (this player just won): label only
+	}
 	var fan []string
 	align, arrow := lipgloss.Left, ">"
 	if leftSide {
@@ -361,6 +369,8 @@ func (m *Model) selfBand() string {
 	me := m.snap.Players[m.snap.YouSeat]
 	hand := m.snap.YourHand
 	label := m.label(me)
+	// Emptied hand (you played your last card and won): no cards, just the label
+	// pinned at the bottom row so the band keeps its height.
 	if len(hand) == 0 {
 		return "\n\n\n  " + label
 	}
