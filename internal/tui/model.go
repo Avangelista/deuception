@@ -44,11 +44,12 @@ type Model struct {
 
 	pendingBotLevel int // difficulty applied to the next added bot (1-9)
 
-	pileCur  []game.Card // the play currently shown in the pile
-	pilePrev []game.Card // the play it beat, drawn under the slide (same size within a trick)
-	pileDir  [2]int      // unit direction the current play slides in from
-	pileStep int         // slide frame, 0 (at the side) .. pileSteps (centred/at rest)
-	pileGen  int         // invalidates stale slide ticks
+	pileCur    []game.Card    // the play currently shown in the pile
+	pilePrev   []game.Card    // the play it beat, drawn under the slide (same size within a trick)
+	pileDir    [2]int         // unit direction the current play slides in from
+	pileStep   int            // slide frame, 0 (at the side) .. pileSteps (centred/at rest)
+	pileGen    int            // invalidates stale slide ticks
+	pileFinish pileFinishMode // what to do once the slide and its hold settle
 }
 
 type hintExpireMsg struct{ gen int }
@@ -81,6 +82,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.applySnapshot(msg.Snap)
 	case pileAnimMsg:
 		return m, m.advancePile(msg)
+	case pileFinishMsg:
+		return m, m.finishPile(msg)
 	case protocol.ErrorMsg:
 		return m, m.setHint(msg.Text)
 	case hintExpireMsg:
@@ -145,25 +148,42 @@ func sameHand(a, b []game.Card) bool {
 	return true
 }
 
-// pileAnimMsg advances the play-in slide one frame; gen drops ticks from a slide
-// that has already been superseded by a newer play.
+// pileAnimMsg advances the play-in slide one frame; pileFinishMsg fires when the
+// centred hold ends. gen drops ticks from a slide superseded by a newer play.
 type pileAnimMsg struct{ gen int }
+type pileFinishMsg struct{ gen int }
 
-// pileSteps and pileTickEvery time the play-in slide: a short glide from the
-// player's side to the centre (pileSteps frames, ~pileSteps*pileTickEvery total).
+// pileSteps and pileTickEvery time the play-in slide (a short glide from the
+// player's side to the centre); pileHold is the beat the card rests centred before
+// the pile clears or the scoreboard takes over.
 const (
 	pileSteps     = 8
 	pileTickEvery = 22 * time.Millisecond
+	pileHold      = 500 * time.Millisecond
+)
+
+// pileFinishMode is what happens once a slide and its hold complete.
+type pileFinishMode uint8
+
+const (
+	finishNone  pileFinishMode = iota // stay put until the next play
+	finishScore                       // hand over: reveal the winning card, then the scoreboard
+	finishClear                       // trick reset mid-slide: let the card land, then clear it
 )
 
 // updatePile reacts to a snapshot: a new table combo starts a slide from the side
-// of the player who made it, opaquely covering the play it beat (both are the same
-// size within a trick). An empty table or a non-playing phase clears the pile.
+// of the player who made it, opaquely covering the play it beat (same size within a
+// trick). A finished hand keeps its winning play so it can slide in before the
+// scoreboard. When the table clears while a slide is still running (a trick won the
+// instant it was played - e.g. disconnected opponents auto-passing), the card is
+// allowed to finish sliding in before the pile clears.
 func (m *Model) updatePile(s protocol.StateSnapshot) tea.Cmd {
-	// Clear only when there is nothing to show. A finished hand keeps its winning
-	// play on the table, so let it slide in before the scoreboard replaces the board.
 	if len(s.Table) == 0 || s.Phase == protocol.Waiting {
-		m.pileCur, m.pilePrev, m.pileDir, m.pileStep = nil, nil, [2]int{}, 0
+		if len(m.pileCur) > 0 && m.pileStep < pileSteps {
+			m.pileFinish = finishClear // finish the in-flight slide, then clear
+			return nil
+		}
+		m.clearPile()
 		return nil
 	}
 	if sameHand(m.pileCur, s.Table) {
@@ -172,8 +192,7 @@ func (m *Model) updatePile(s protocol.StateSnapshot) tea.Cmd {
 	prev := m.pileCur
 	m.pileCur = append([]game.Card(nil), s.Table...)
 	// Cover the beaten play only when it is the same size (guaranteed within a
-	// trick). A size change means the trick reset without us seeing the empty-table
-	// snapshot, so there is nothing to cover.
+	// trick). A size change means a new trick, so there is nothing to cover.
 	m.pilePrev = nil
 	if len(prev) == len(m.pileCur) {
 		m.pilePrev = prev
@@ -185,12 +204,24 @@ func (m *Model) updatePile(s protocol.StateSnapshot) tea.Cmd {
 	}
 	m.pileDir = [2]int{dx, dy}
 	m.pileGen++
-	if dx == 0 && dy == 0 { // no direction: just show it centred
+	m.pileFinish = finishNone
+	if s.Phase == protocol.Finished {
+		m.pileFinish = finishScore // the winning play: hold, then the scoreboard
+	}
+	if dx == 0 && dy == 0 { // no direction: skip straight to centred
 		m.pileStep, m.pilePrev = pileSteps, nil
+		if m.pileFinish != finishNone {
+			return m.pileHoldTick()
+		}
 		return nil
 	}
 	m.pileStep = 0
 	return m.pileTick()
+}
+
+// clearPile resets the pile to empty.
+func (m *Model) clearPile() {
+	m.pileCur, m.pilePrev, m.pileDir, m.pileStep, m.pileFinish = nil, nil, [2]int{}, 0, finishNone
 }
 
 // pileTick schedules the next slide frame, tagged with the current generation.
@@ -199,7 +230,14 @@ func (m *Model) pileTick() tea.Cmd {
 	return tea.Tick(pileTickEvery, func(time.Time) tea.Msg { return pileAnimMsg{gen: gen} })
 }
 
-// advancePile steps the slide, dropping the covered play once it settles centred.
+// pileHoldTick schedules the end of the centred hold, after which the pile finishes.
+func (m *Model) pileHoldTick() tea.Cmd {
+	gen := m.pileGen
+	return tea.Tick(pileHold, func(time.Time) tea.Msg { return pileFinishMsg{gen: gen} })
+}
+
+// advancePile steps the slide; once it settles centred it drops the covered play and
+// either stops or, if a finish is pending, starts the centred hold.
 func (m *Model) advancePile(msg pileAnimMsg) tea.Cmd {
 	if msg.gen != m.pileGen || m.pileStep >= pileSteps {
 		return nil
@@ -207,15 +245,33 @@ func (m *Model) advancePile(msg pileAnimMsg) tea.Cmd {
 	m.pileStep++
 	if m.pileStep >= pileSteps {
 		m.pilePrev = nil // fully covered now: only the current play remains
+		if m.pileFinish != finishNone {
+			return m.pileHoldTick()
+		}
 		return nil
 	}
 	return m.pileTick()
 }
 
+// finishPile runs when the centred hold elapses: clear a won trick's pile, or drop
+// the win reveal so the scoreboard shows.
+func (m *Model) finishPile(msg pileFinishMsg) tea.Cmd {
+	if msg.gen != m.pileGen {
+		return nil // superseded by a newer play
+	}
+	switch m.pileFinish {
+	case finishClear:
+		m.clearPile()
+	case finishScore:
+		m.pileFinish = finishNone
+	}
+	return nil
+}
+
 // SettlePile fast-forwards any in-flight slide to its resting centred frame. Used by
 // the headless preview and tests, which don't run the tick loop.
 func (m *Model) SettlePile() {
-	m.pileStep, m.pilePrev = pileSteps, nil
+	m.pileStep, m.pilePrev, m.pileFinish = pileSteps, nil, finishNone
 }
 
 // clampScroll keeps the off-turn scroll within [0, len-maxHandCells] so a resize
@@ -419,10 +475,10 @@ func (m *Model) viewContent() string {
 }
 
 // winSlideActive reports that the hand just ended and the winning play is still
-// sliding into the pile, so the board should hold a beat before the scoreboard.
+// sliding/holding in the pile, so the board should stay up before the scoreboard.
 func (m *Model) winSlideActive() bool {
 	return m.snap != nil && m.snap.Phase == protocol.Finished &&
-		len(m.pileCur) > 0 && m.pileStep < pileSteps
+		len(m.pileCur) > 0 && m.pileFinish == finishScore
 }
 
 func (m *Model) center(s string) string {

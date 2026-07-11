@@ -197,6 +197,12 @@ func (r *Room) handlePlay(c PlayCmd) {
 		return
 	}
 	r.applyEvents(evs)
+	// If the turn now rests on a disconnected seat, the upcoming auto-advance may
+	// resolve the trick in this same step and clear the table. Show the play first so
+	// clients can animate it before it vanishes.
+	if r.phase == protocol.InGame && r.game.Table != nil && !r.seats[r.game.Turn].Connected {
+		r.fanout()
+	}
 	r.afterTransition()
 }
 

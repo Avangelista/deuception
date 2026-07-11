@@ -384,16 +384,59 @@ func TestWinningPlayAnimatesThenScoreboard(t *testing.T) {
 		t.Fatal("board (footer) should be shown while the winning play slides in")
 	}
 
-	// Drive the slide to completion; the scoreboard then takes over.
+	// Drive the slide to completion; the card then holds at centre (still the board,
+	// not the scoreboard).
 	for i := 0; i < pileSteps+2 && m.pileStep < pileSteps; i++ {
 		m.Update(pileAnimMsg{gen: m.pileGen})
 	}
-	if m.winSlideActive() {
-		t.Fatal("win slide should be finished after enough ticks")
+	if !m.winSlideActive() {
+		t.Fatal("winning card should hold at centre before the scoreboard")
 	}
-	after := m.View()
-	if !strings.Contains(after, "wins") {
-		t.Fatal("scoreboard should show once the winning card has slid in")
+	if strings.Contains(m.View(), "wins") {
+		t.Fatal("scoreboard shown during the centre hold")
+	}
+	// End the hold: now the scoreboard takes over.
+	m.Update(pileFinishMsg{gen: m.pileGen})
+	if m.winSlideActive() {
+		t.Fatal("win reveal should be finished after the hold ends")
+	}
+	if !strings.Contains(m.View(), "wins") {
+		t.Fatal("scoreboard should show once the winning card has been revealed")
+	}
+}
+
+// TestPileLingersWhenTrickResetsMidSlide: if the table clears while a play is still
+// sliding in (a trick won the instant it was played, e.g. disconnected opponents
+// auto-passing), the card finishes sliding and holds, then clears - it isn't cut off.
+func TestPileLingersWhenTrickResetsMidSlide(t *testing.T) {
+	m := New(nopCommander{}, "id", "hint", lipgloss.DefaultRenderer())
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	// A play lands and starts sliding in.
+	m.Update(protocol.StateSnapshotMsg{Snap: tableSnap(1, parseHand(t, "4D 5D"), parseHand(t, "6H 6S"), 1)})
+	if m.pileStep >= pileSteps {
+		t.Fatal("play should start a slide")
+	}
+	// The trick resets immediately (empty table) while still mid-slide.
+	m.Update(protocol.StateSnapshotMsg{Snap: tableSnap(2, parseHand(t, "4D 5D"), nil, -1)})
+	if len(m.pileCur) == 0 {
+		t.Fatal("card was cleared mid-slide; it should linger to finish")
+	}
+	if m.pileFinish != finishClear {
+		t.Fatalf("expected finishClear pending after a mid-slide reset, got %v", m.pileFinish)
+	}
+
+	// Drive the slide to completion; the card is still shown during the hold.
+	for i := 0; i < pileSteps+2 && m.pileStep < pileSteps; i++ {
+		m.Update(pileAnimMsg{gen: m.pileGen})
+	}
+	if len(m.pileCur) == 0 {
+		t.Fatal("card should still be shown while it holds at centre")
+	}
+	// End the hold: the pile clears.
+	m.Update(pileFinishMsg{gen: m.pileGen})
+	if len(m.pileCur) != 0 {
+		t.Fatalf("pile should clear after the card lands and holds, got %v", m.pileCur)
 	}
 }
 
