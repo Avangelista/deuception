@@ -10,6 +10,7 @@ import (
 
 // joinN seats n players (first is host) with nil programs (fanout skips them).
 func joinN(r *Room, n int) []string {
+	r.trickDelay = 0 // deterministic: no trick-won hold in tests
 	ids := make([]string, n)
 	for i := 0; i < n; i++ {
 		ids[i] = NewID()

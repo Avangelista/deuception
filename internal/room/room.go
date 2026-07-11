@@ -32,29 +32,42 @@ type Seat struct {
 
 // Room is a single game room served to many connections.
 type Room struct {
-	cmds     chan Command
-	maxSeats int
-	minStart int
-	rng      *mrand.Rand
-	botDelay time.Duration // how long a bot "thinks" before acting
+	cmds       chan Command
+	maxSeats   int
+	minStart   int
+	rng        *mrand.Rand
+	botDelay   time.Duration // how long a bot "thinks" before acting
+	trickDelay time.Duration // how long a won trick is held on screen before it clears
 
 	// actor-owned state (only touched inside run):
-	seats     []*Seat
-	game      *game.GameState
-	phase     protocol.Phase
-	rev       int // monotonic snapshot revision; lets clients drop out-of-order sends
-	turnToken int // bumped whenever a bot is scheduled; invalidates stale timers
+	seats       []*Seat
+	game        *game.GameState
+	phase       protocol.Phase
+	rev         int          // monotonic snapshot revision; lets clients drop out-of-order sends
+	turnToken   int          // bumped whenever a bot is scheduled; invalidates stale timers
+	trickToken  int          // bumped whenever a trick hold is scheduled; invalidates stale timers
+	trickReveal *trickReveal // set while a won trick is held on screen before it clears
+}
+
+// trickReveal is the just-completed trick, held briefly so the winning card and the
+// final pass are visible before the next trick starts. snapshotFor shows this in
+// place of the (already reset) live state while it is set.
+type trickReveal struct {
+	table  []game.Card
+	by     int    // seat that won the trick (owns the table combo)
+	passed []bool // who passed, including the final pass that ended the trick
 }
 
 // New starts a room actor. maxSeats caps the table, minStart is the fewest that can start.
 func New(maxSeats, minStart int, rng *mrand.Rand) *Room {
 	r := &Room{
-		cmds:     make(chan Command, 64),
-		maxSeats: maxSeats,
-		minStart: minStart,
-		rng:      rng,
-		phase:    protocol.Waiting,
-		botDelay: time.Second,
+		cmds:       make(chan Command, 64),
+		maxSeats:   maxSeats,
+		minStart:   minStart,
+		rng:        rng,
+		phase:      protocol.Waiting,
+		botDelay:   time.Second,
+		trickDelay: protocol.RevealHold,
 	}
 	go r.run()
 	return r
@@ -94,6 +107,8 @@ func (r *Room) run() {
 			r.handleRemoveBot(cmd)
 		case BotActCmd:
 			r.handleBotAct(cmd)
+		case trickResetCmd:
+			r.handleTrickReset(cmd)
 		case DisconnectCmd:
 			r.handleLeave(cmd.ID)
 		case QuitCmd:
@@ -119,6 +134,11 @@ func (r *Room) run() {
 type closeCmd struct{ done chan struct{} }
 
 func (closeCmd) isCmd() {}
+
+// trickResetCmd fires after the trick-won hold; token guards against a stale timer.
+type trickResetCmd struct{ token int }
+
+func (trickResetCmd) isCmd() {}
 
 // Close notifies connected players and returns once the shutdown message is dispatched.
 func (r *Room) Close() {
@@ -197,6 +217,7 @@ func (r *Room) handlePlay(c PlayCmd) {
 		return
 	}
 	r.applyEvents(evs)
+	r.trickReveal = nil // a fresh play ends any pending trick-won hold
 	// If the turn now rests on a disconnected seat, the upcoming auto-advance may
 	// resolve the trick in this same step and clear the table. Show the play first so
 	// clients can animate it before it vanishes.
@@ -214,12 +235,63 @@ func (r *Room) handlePass(c PassCmd) {
 	if idx < 0 {
 		return
 	}
+	// Capture the trick before the pass, in case it wins the trick and the engine
+	// clears the table and pass flags in the same step.
+	table, passed := r.game.Table, append([]bool(nil), r.game.Passed...)
 	evs, err := r.game.Pass(game.Seat(idx))
 	if err != nil {
 		safeSend(r.seats[idx].Prog, protocol.ErrorMsg{Text: err.Error()})
 		return
 	}
 	r.applyEvents(evs)
+	if r.beginTrickReveal(evs, table, passed, idx) {
+		return
+	}
+	r.afterTransition()
+}
+
+// beginTrickReveal holds a just-won trick on screen for a beat, so the winning card
+// and the final pass are visible before the next trick starts. It returns true (and
+// the caller then skips afterTransition) when a reveal was started. table/passed are
+// the trick captured before the pass reset them; passer is the seat that passed.
+func (r *Room) beginTrickReveal(evs []game.Event, table *game.Combo, passed []bool, passer int) bool {
+	if r.phase != protocol.InGame || r.trickDelay <= 0 || table == nil || !wonTrick(evs) {
+		return false
+	}
+	if passer >= 0 && passer < len(passed) {
+		passed[passer] = true
+	}
+	r.trickReveal = &trickReveal{
+		table:  append([]game.Card(nil), table.Cards...),
+		by:     int(r.game.Leader), // the leader took the trick and owns the table combo
+		passed: passed,
+	}
+	r.trickToken++
+	tok, delay := r.trickToken, r.trickDelay
+	go func() {
+		time.Sleep(delay)
+		r.Submit(trickResetCmd{token: tok})
+	}()
+	r.fanout()
+	return true
+}
+
+// wonTrick reports whether evs contains a TrickWonEvent.
+func wonTrick(evs []game.Event) bool {
+	for _, e := range evs {
+		if _, ok := e.(game.TrickWonEvent); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// handleTrickReset ends a trick-won hold and resumes normal play.
+func (r *Room) handleTrickReset(c trickResetCmd) {
+	if c.token != r.trickToken || r.trickReveal == nil {
+		return // superseded by a newer play/hold, or already cleared
+	}
+	r.trickReveal = nil
 	r.afterTransition()
 }
 
@@ -342,6 +414,7 @@ func (r *Room) handleBotAct(c BotActCmd) {
 		return
 	}
 	mv := bot.ChooseMove(r.game, game.Seat(c.Seat), r.seats[c.Seat].BotLevel, r.rng)
+	table, passed := r.game.Table, append([]bool(nil), r.game.Passed...)
 	var evs []game.Event
 	var err error
 	if mv.Pass {
@@ -356,6 +429,9 @@ func (r *Room) handleBotAct(c BotActCmd) {
 		}
 	}
 	r.applyEvents(evs)
+	if mv.Pass && err == nil && r.beginTrickReveal(evs, table, passed, c.Seat) {
+		return
+	}
 	r.afterTransition()
 }
 
@@ -513,9 +589,14 @@ func (r *Room) snapshotFor(viewer int) protocol.StateSnapshot {
 		}
 		if r.game != nil {
 			pv.CardCount = len(r.game.Hands[i])
-			pv.IsTurn = r.phase == protocol.InGame && int(r.game.Turn) == i
-			// passing is locked out, so this stays set for the whole trick
-			pv.Passed = r.phase == protocol.InGame && r.game.Passed[i]
+			if r.trickReveal != nil {
+				// Held won trick: show its final pass flags, no active turn.
+				pv.Passed = i < len(r.trickReveal.passed) && r.trickReveal.passed[i]
+			} else {
+				pv.IsTurn = r.phase == protocol.InGame && int(r.game.Turn) == i
+				// passing is locked out, so this stays set for the whole trick
+				pv.Passed = r.phase == protocol.InGame && r.game.Passed[i]
+			}
 		}
 		players[i] = pv
 	}
@@ -533,11 +614,18 @@ func (r *Room) snapshotFor(viewer int) protocol.StateSnapshot {
 	}
 	if r.game != nil {
 		snap.YourHand = append([]game.Card(nil), r.game.Hands[viewer]...)
-		if r.game.Table != nil {
-			snap.Table = append([]game.Card(nil), r.game.Table.Cards...)
-			snap.TableBy = int(r.game.Leader) // Leader owns the current Table combo
+		if r.trickReveal != nil {
+			// Held won trick: show the completed trick with no active turn until it clears.
+			snap.Table = append([]game.Card(nil), r.trickReveal.table...)
+			snap.TableBy = r.trickReveal.by
+			snap.Turn = -1
+		} else {
+			if r.game.Table != nil {
+				snap.Table = append([]game.Card(nil), r.game.Table.Cards...)
+				snap.TableBy = int(r.game.Leader) // Leader owns the current Table combo
+			}
+			snap.Turn = int(r.game.Turn)
 		}
-		snap.Turn = int(r.game.Turn)
 		snap.Winner = int(r.game.Winner)
 	}
 	return snap

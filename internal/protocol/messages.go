@@ -2,7 +2,17 @@
 // Bubble Tea program and the per-viewer, redacted view of game state.
 package protocol
 
-import "github.com/Avangelista/deuception/internal/game"
+import (
+	"time"
+
+	"github.com/Avangelista/deuception/internal/game"
+)
+
+// RevealHold is the standard beat a resolved moment rests on screen before the
+// next state takes over: a won trick before it clears, the winning play before the
+// scoreboard, a card landing before its trick resets. Kept in one place so every
+// reveal feels the same, on both the server (trick hold) and client (pile hold).
+const RevealHold = 600 * time.Millisecond
 
 // Phase mirrors the room lifecycle for rendering.
 type Phase int

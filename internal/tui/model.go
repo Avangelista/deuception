@@ -155,11 +155,11 @@ type pileFinishMsg struct{ gen int }
 
 // pileSteps and pileTickEvery time the play-in slide (a short glide from the
 // player's side to the centre); pileHold is the beat the card rests centred before
-// the pile clears or the scoreboard takes over.
+// the pile clears or the scoreboard takes over - the shared reveal beat.
 const (
 	pileSteps     = 8
 	pileTickEvery = 22 * time.Millisecond
-	pileHold      = 500 * time.Millisecond
+	pileHold      = protocol.RevealHold
 )
 
 // pileFinishMode is what happens once a slide and its hold complete.

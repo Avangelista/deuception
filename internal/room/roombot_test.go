@@ -53,6 +53,47 @@ func TestBotActStaleTokenIgnored(t *testing.T) {
 	}
 }
 
+// TestTrickWonHold: a pass that wins a trick holds the completed trick on screen -
+// the winning card, the final pass X, and no active turn - until it clears.
+func TestTrickWonHold(t *testing.T) {
+	r := New(2, 2, mrand.New(mrand.NewSource(11)))
+	r.trickDelay = time.Hour // hold indefinitely so we can inspect it deterministically
+
+	a, b := NewID(), NewID()
+	r.Submit(JoinCmd{ID: a, Host: true})
+	r.Submit(JoinCmd{ID: b})
+	r.Submit(StartCmd{ID: a})
+
+	ids := []string{a, b}
+	opener := r.Query(a).Turn
+	openerID, otherID := ids[opener], ids[1-opener]
+
+	// Opener leads its lowest card (the open card); the other passes, which in a
+	// 2-player game wins the trick.
+	r.Submit(PlayCmd{ID: openerID, Cards: r.Query(openerID).YourHand[:1]})
+	r.Submit(PassCmd{ID: otherID})
+
+	rev := r.Query(a)
+	if rev.Turn != -1 {
+		t.Fatalf("held trick should have no active turn, got Turn=%d", rev.Turn)
+	}
+	if len(rev.Table) == 0 {
+		t.Fatal("held trick should still show the winning card")
+	}
+	if !rev.Players[1-opener].Passed {
+		t.Fatal("the final passer's X should show during the hold")
+	}
+	if rev.Players[opener].IsTurn {
+		t.Fatal("no player should be on turn during the hold")
+	}
+
+	// The winner leading a fresh card ends the hold and resumes normal play.
+	r.Submit(PlayCmd{ID: openerID, Cards: r.Query(openerID).YourHand[:1]})
+	if after := r.Query(a); after.Turn == -1 {
+		t.Fatal("hold should have ended once the winner led a new card")
+	}
+}
+
 // TestHostLeavesLobbyPromotes: when the host leaves the waiting room, a remaining
 // player is promoted so the room stays startable (regression: serve-only orphan).
 func TestHostLeavesLobbyPromotes(t *testing.T) {
@@ -225,7 +266,8 @@ func humanDumbMove(r *Room, id string, snap protocol.StateSnapshot) {
 // goroutines against the single-owner actor.
 func TestBotPlaysThroughActor(t *testing.T) {
 	r := New(4, 3, mrand.New(mrand.NewSource(5)))
-	r.botDelay = 0 // no artificial think time in tests
+	r.botDelay = 0   // no artificial think time in tests
+	r.trickDelay = 0 // no trick-won hold in tests
 
 	host := NewID()
 	r.Submit(JoinCmd{ID: host, Host: true})
