@@ -1,14 +1,23 @@
 package tui
 
 import (
+	"io"
 	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 
 	"github.com/Avangelista/deuception/internal/game"
 )
+
+// colourModel builds a bare Model with a forced-colour renderer for style tests.
+func colourModel() *Model {
+	r := lipgloss.NewRenderer(io.Discard)
+	r.SetColorProfile(termenv.ANSI256)
+	return &Model{r: r, st: newStyles(r), selected: map[int]bool{}}
+}
 
 var sgrRe = regexp.MustCompile("\x1b\\[[0-9;]*m")
 
@@ -121,6 +130,49 @@ func TestSelfFanRoundedTiles(t *testing.T) {
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Errorf("self-fan mismatch:\n got:\n%s\nwant:\n%s",
 			strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+// TestHFanMatchesDemo2 checks the top opponent's back matches demo2.txt: a ░-filled
+// body and a rounded floor, wide front card leftmost, each card keeping its ╯ corner.
+func TestHFanMatchesDemo2(t *testing.T) {
+	fill, floor := hFan(6, 80)
+	if fill != "│░░░│░░│░░│░░│░░│░░│" {
+		t.Errorf("fill body = %q", fill)
+	}
+	if floor != "╰───╯──╯──╯──╯──╯──╯" {
+		t.Errorf("floor = %q", floor)
+	}
+}
+
+// TestFaceColour checks a red card's rank+suit are both coloured red while a black
+// card's face and all borders stay plain (no cursor/selected outline colour).
+func TestFaceColour(t *testing.T) {
+	m := colourModel()
+	const red = "\x1b[31m"
+	// Pile: red rank and pip go red together; black card and borders stay plain.
+	got := m.paintPileRow([]rune("│4♥│5♠  │"))
+	if !strings.Contains(got, red+"4♥") {
+		t.Errorf("red card rank+suit should be red: %q", got)
+	}
+	if strings.Count(got, red) != 1 { // only the one red card, not the black one or borders
+		t.Errorf("exactly one red run expected: %q", got)
+	}
+	// Self-fan: same rule, and no cyan/yellow highlight anywhere.
+	m.selected = map[int]bool{0: true}
+	rows, tags := m.selfFan(cards("4H", "5S"), 0, 2, 0, true)
+	var painted strings.Builder
+	for i := range rows {
+		painted.WriteString(m.paintTagged(rows[i], tags[i]))
+	}
+	out := painted.String()
+	if !strings.Contains(out, red) {
+		t.Errorf("self-fan red face not coloured: %q", out)
+	}
+	for _, code := range []string{"\x1b[36m", "\x1b[33m", "\x1b[6m", "\x1b[3m"} { // cyan / yellow
+		if strings.Contains(out, code) {
+			t.Errorf("self-fan should carry no highlight colour %q: %q", code, out)
+		}
 	}
 }
 

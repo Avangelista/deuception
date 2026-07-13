@@ -1,16 +1,46 @@
 package tui
 
 import (
+	"io"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 
 	"github.com/Avangelista/deuception/internal/game"
 	"github.com/Avangelista/deuception/internal/protocol"
 	"github.com/Avangelista/deuception/internal/room"
 )
+
+// TestBossHidePlainAndAligned: the boss-key frame carries no escapes and every row
+// keeps the same display width as the live (coloured, glyph) frame, so the disguise
+// is column-identical plain text.
+func TestBossHidePlainAndAligned(t *testing.T) {
+	r := lipgloss.NewRenderer(io.Discard)
+	r.SetColorProfile(termenv.ANSI256)
+	m := New(nopCommander{}, "id", "hint", r)
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m.Update(protocol.StateSnapshotMsg{Snap: fourPTableSnap(1,
+		parseHand(t, "4D 4H 5C 8D TS JH 2S"), parseHand(t, "6H 6S"), 1)})
+	m.pileStep = pileSteps
+	live := m.View()
+	m.boss = true
+	boss := m.View()
+	if strings.ContainsRune(boss, 0x1b) {
+		t.Error("boss frame should carry no colour escapes")
+	}
+	lv, bv := strings.Split(live, "\n"), strings.Split(boss, "\n")
+	if len(lv) != len(bv) {
+		t.Fatalf("line count differs: live %d boss %d", len(lv), len(bv))
+	}
+	for i := range lv {
+		if lipgloss.Width(lv[i]) != lipgloss.Width(bv[i]) {
+			t.Errorf("row %d width differs: live %d boss %d", i, lipgloss.Width(lv[i]), lipgloss.Width(bv[i]))
+		}
+	}
+}
 
 type nopCommander struct{}
 
@@ -504,13 +534,13 @@ func TestOnlyWinnerHandHidden(t *testing.T) {
 	m.Update(protocol.StateSnapshotMsg{Snap: win})
 	m.pileStep = pileSteps // land the slide
 
-	if strings.Contains(m.topBand(4, 80), "|") {
+	if strings.Contains(m.topBand(4, 80), "│") {
 		t.Error("the winner's hand (0 cards) should show no cards")
 	}
-	if !strings.Contains(m.sideBlock(m.playerAtRel(1), 8, true), "|") {
+	if !strings.Contains(m.sideBlock(m.playerAtRel(1), 8, true), "│") {
 		t.Error("left opponent still holds cards and should show them")
 	}
-	if !strings.Contains(m.sideBlock(m.playerAtRel(3), 8, false), "|") {
+	if !strings.Contains(m.sideBlock(m.playerAtRel(3), 8, false), "│") {
 		t.Error("right opponent still holds cards and should show them")
 	}
 	if !strings.Contains(m.selfBand(), "│") {
@@ -534,10 +564,10 @@ func TestOnlyWinnerHandHidden(t *testing.T) {
 	selfWin.Table = parseHand(t, "2S")
 	selfWin.TableBy, selfWin.Turn, selfWin.Winner = 0, 0, 0
 	m.Update(protocol.StateSnapshotMsg{Snap: selfWin})
-	if strings.Contains(m.selfBand(), "|") {
+	if strings.Contains(m.selfBand(), "│") {
 		t.Error("your emptied hand should show no cards")
 	}
-	if !strings.Contains(m.sideBlock(m.playerAtRel(1), 8, true), "|") {
+	if !strings.Contains(m.sideBlock(m.playerAtRel(1), 8, true), "│") {
 		t.Error("opponents who still hold cards should show them when you win")
 	}
 }

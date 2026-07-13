@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Avangelista/deuception/internal/game"
 	"github.com/Avangelista/deuception/internal/protocol"
@@ -71,12 +72,20 @@ func (m *Model) oppMark(p protocol.PlayerView, arrow string) string {
 	return ""
 }
 
-// bossReplacer blanks the card borders ("|" and "_") to spaces so columns stay
-// aligned; bossHide runs it over a whole frame for the "boss key" disguise, which
-// strips the box-drawing so the board reads as plain terminal text.
-var bossReplacer = strings.NewReplacer("|", " ", "_", " ")
+// bossReplacer disguises the board as plain terminal text: it blanks the rounded
+// borders and the opponent-back ░ fill to spaces (keeping columns aligned), drops
+// the width-0 variation selector, and turns glyph pips back into their letters so a
+// row like "│9♥ │" reads " 9H  ". bossHide first strips colour with ansi.Strip
+// (SGR runs are width-0, so removing them shifts nothing), then applies the map.
+var bossReplacer = strings.NewReplacer(
+	"│", " ", "─", " ", "╭", " ", "╮", " ", "╰", " ", "╯", " ",
+	"░", " ",
+	vs15, "",
+	"♦", "D", "♣", "C", "♥", "H", "♠", "S",
+	"|", " ", "_", " ", // legacy ASCII borders, harmless
+)
 
-func bossHide(s string) string { return bossReplacer.Replace(s) }
+func bossHide(s string) string { return bossReplacer.Replace(ansi.Strip(s)) }
 
 // youHostTag labels a player as "(you, host)", "(you)", "(host)", or "". No
 // leading space; the caller adds its own.
@@ -161,19 +170,18 @@ func (m *Model) topBand(n, w int) string {
 		// keeping the band's 2-row height so the board doesn't shift.
 		return lipgloss.JoinVertical(lipgloss.Left, m.label(p), "")
 	}
-	top, bot := hFan(p.CardCount, w)
-	ftop, fbot := m.st.faint.Render(top), m.st.faint.Render(bot)
-	// The label rides row 0 and never moves (top and bot are the same width). The
-	// band is a fixed 2 rows so the board never shifts: on turn the open top grows
-	// down toward the centre, off turn a blank filler holds the second row.
+	// The label rides the floor row (same width both turns, so it never moves
+	// horizontally). The band is a fixed 2 rows so the board never shifts: on turn
+	// the ░ back grows down toward the centre above the floor, off turn only the
+	// floor shows (receded to the top edge) and row 2 holds the last-play marker.
+	fill, floor := hFan(p.CardCount, w)
 	if m.showTurn(p) {
-		// on turn: card grows into row 2, and an active player carries no marker.
-		return lipgloss.JoinVertical(lipgloss.Left, ftop+m.label(p), fbot)
+		return lipgloss.JoinVertical(lipgloss.Left,
+			m.paintBack(fill), floor+m.label(p))
 	}
-	// Off turn the card is one line, so row 2 holds the last-play marker centred
-	// under the cards: "v" played, "X" passed, blank otherwise.
-	mark := lipgloss.PlaceHorizontal(lipgloss.Width(bot), lipgloss.Center, m.oppMark(p, "v"))
-	return lipgloss.JoinVertical(lipgloss.Left, fbot+m.label(p), mark)
+	// Off turn: "v" played, "X" passed, blank otherwise, centred under the floor.
+	mark := lipgloss.PlaceHorizontal(lipgloss.Width(floor), lipgloss.Center, m.oppMark(p, "v"))
+	return lipgloss.JoinVertical(lipgloss.Left, floor+m.label(p), mark)
 }
 
 // midRow: left opponent flush-left, right opponent flush-right, pile centred,
@@ -255,6 +263,12 @@ func (m *Model) sideBlock(p protocol.PlayerView, budget int, leftSide bool) stri
 			fan[mid] = mark + " " + fan[mid]
 		}
 	}
+	// On their turn the ░ back-pattern shows blue; the outline stays plain.
+	if active {
+		for i := range fan {
+			fan[i] = m.paintBack(fan[i])
+		}
+	}
 	return lipgloss.JoinVertical(align, append(fan, m.label(p))...)
 }
 
@@ -293,33 +307,41 @@ func (m *Model) pileBoxLines(cs []game.Card) []string {
 	return []string{top.String(), face.String(), body.String(), bottom.String()}
 }
 
-// paintPileRow renders a composited pile row: suit pips are coloured (red for
-// hearts/diamonds) and given text presentation; borders and ranks keep the default
-// foreground. Colouring the pile is a pure function of the rune - it carries no
-// per-card cursor/selection state - so no tag grid is needed here.
+// paintPileRow renders a composited pile row: a red card's face (its rank and its
+// pip) goes red, pips get text presentation; borders keep the default foreground.
+// A red pip is found by rune (suits never collide with ranks/borders), and the rank
+// immediately to its left is coloured with it. Colouring is a pure function of the
+// row, so the pile needs no tag grid.
 func (m *Model) paintPileRow(row []rune) string {
+	red := make([]bool, len(row))
+	for i, r := range row {
+		if isRed, isSuit := m.suitInfo(r); isSuit && isRed {
+			red[i] = true
+			if i > 0 {
+				red[i-1] = true // the rank sits just left of its pip
+			}
+		}
+	}
 	var b strings.Builder
 	for i := 0; i < len(row); {
-		if red, isSuit := m.suitInfo(row[i]); isSuit {
-			cell := string(row[i])
-			if !m.asciiSuits {
-				cell += vs15 // text (not emoji) presentation, keeps the pip width-1
-			}
-			if red {
-				cell = m.st.suitRed.Render(cell)
-			}
-			b.WriteString(cell)
-			i++
-			continue
-		}
 		j := i
-		for j < len(row) {
-			if _, isSuit := m.suitInfo(row[j]); isSuit {
-				break
-			}
+		for j < len(row) && red[j] == red[i] {
 			j++
 		}
-		b.WriteString(string(row[i:j]))
+		var seg strings.Builder
+		for _, r := range row[i:j] {
+			seg.WriteRune(r)
+			if !m.asciiSuits {
+				if _, isSuit := m.suitInfo(r); isSuit {
+					seg.WriteString(vs15)
+				}
+			}
+		}
+		s := seg.String()
+		if red[i] {
+			s = m.st.suitRed.Render(s)
+		}
+		b.WriteString(s)
 		i = j
 	}
 	return b.String()
@@ -487,12 +509,11 @@ func (m *Model) maxHandCells() int {
 	return n
 }
 
-// colour tags for a composited fan cell.
+// colour tags for a composited fan cell: a red card's face (rank and suit) is the
+// only coloured content; everything else is plain.
 const (
 	tagPlain uint8 = iota
 	tagRed
-	tagCursor
-	tagSelected
 )
 
 // selfFan renders the windowed hand as a fixed 4-row fan of rounded tiles. Each card
@@ -529,13 +550,8 @@ func (m *Model) selfFan(hand []game.Card, start, end, cursor int, showCursor boo
 			t = 0 // selected: lifted up one row
 		}
 		faceRow, bodyRow, botRow := t+1, t+2, t+3
-		ctag := tagPlain
-		if m.selected[i] {
-			ctag = tagSelected
-		}
-		if showCursor && i == cursor {
-			ctag = tagCursor
-		}
+		// The border is plain; only the face carries colour. Cursor is the "*"
+		// marker and selection is the lift - both geometry, not colour.
 		// Roof ╭──, opened to ╭────╮ when this lifted card pops a row above a lower
 		// next card; left/bottom │…╰── (the bottom is on-grid only when lifted).
 		open := false
@@ -550,42 +566,42 @@ func (m *Model) selfFan(hand []game.Card, start, end, cursor int, showCursor boo
 		if open {
 			roofEnd = L + 4
 		}
-		put(t, L, '╭', ctag)
+		put(t, L, '╭', tagPlain)
 		for c := L + 1; c <= roofEnd; c++ {
-			put(t, c, '─', ctag)
+			put(t, c, '─', tagPlain)
 		}
 		if front || open {
-			put(t, roofEnd+1, '╮', ctag)
+			put(t, roofEnd+1, '╮', tagPlain)
 		}
-		put(faceRow, L, '│', ctag)
-		put(bodyRow, L, '│', ctag)
-		put(botRow, L, '╰', ctag)
+		put(faceRow, L, '│', tagPlain)
+		put(bodyRow, L, '│', tagPlain)
+		put(botRow, L, '╰', tagPlain)
 		for c := L + 1; c <= L+faceW; c++ {
-			put(botRow, c, '─', ctag)
+			put(botRow, c, '─', tagPlain)
 		}
 		if front { // the "big" card closes its own right edge
 			rb := L + faceW + 1
-			put(faceRow, rb, '│', ctag)
-			put(bodyRow, rb, '│', ctag)
-			put(botRow, rb, '╯', ctag)
+			put(faceRow, rb, '│', tagPlain)
+			put(bodyRow, rb, '│', tagPlain)
+			put(botRow, rb, '╯', tagPlain)
 		}
-		// Face glyphs; the suit carries its own red tag independent of the border.
+		// Face rank+suit, coloured together (red for hearts/diamonds).
 		face := hand[i]
-		put(faceRow, L+1, face.Rank.Rune(), tagPlain)
-		suitTag := tagPlain
+		faceTag := tagPlain
 		if face.Suit.IsRed() {
-			suitTag = tagRed
+			faceTag = tagRed
 		}
-		put(faceRow, L+2, m.suitRune(face.Suit), suitTag)
+		put(faceRow, L+1, face.Rank.Rune(), faceTag)
+		put(faceRow, L+2, m.suitRune(face.Suit), faceTag)
 		if showCursor && i == cursor {
-			put(bodyRow, L+1, '*', tagCursor)
+			put(bodyRow, L+1, '*', tagPlain)
 		}
 	}
 	return rows, tags
 }
 
-// paintTagged renders a fan row from its runes and colour tags: red suits, cyan
-// cursor, yellow selected, with pips given text presentation (VS15). Adjacent
+// paintTagged renders a fan row from its runes and colour tags: red-tagged cells
+// (a red card's rank+suit) go red, pips get text presentation (VS15). Adjacent
 // same-tag cells are grouped so each colour run is one escape.
 func (m *Model) paintTagged(runes []rune, tags []uint8) string {
 	var b strings.Builder
@@ -605,15 +621,33 @@ func (m *Model) paintTagged(runes []rune, tags []uint8) string {
 			}
 		}
 		s := seg.String()
-		switch t {
-		case tagRed:
+		if t == tagRed {
 			s = m.st.suitRed.Render(s)
-		case tagCursor:
-			s = m.st.cursor.Render(s)
-		case tagSelected:
-			s = m.st.selected.Render(s)
 		}
 		b.WriteString(s)
+		i = j
+	}
+	return b.String()
+}
+
+// paintBack colours only the ░ back-pattern runs (blue); the card outline (│─╭╮╰╯)
+// keeps the default foreground. A row with no ░ (an off-turn back) is returned as-is.
+func (m *Model) paintBack(s string) string {
+	if !strings.ContainsRune(s, '░') {
+		return s
+	}
+	var b strings.Builder
+	runes := []rune(s)
+	for i := 0; i < len(runes); {
+		j := i
+		for j < len(runes) && (runes[j] == '░') == (runes[i] == '░') {
+			j++
+		}
+		seg := string(runes[i:j])
+		if runes[i] == '░' {
+			seg = m.st.back.Render(seg)
+		}
+		b.WriteString(seg)
 		i = j
 	}
 	return b.String()
@@ -631,9 +665,11 @@ func (m *Model) errorLine(w int) string {
 
 // ---- card-back fans (front card drawn larger, like a real fan) ----
 
-// hFan draws the top opponent's horizontal fan: a wide front card then slivers,
-// capped to what fits the width (minimum 3).
-func hFan(count, w int) (string, string) {
+// hFan draws the top opponent's fan of rounded card-backs as two rows: a ░-filled
+// body (shown on their turn) and a rounded floor. The wide front card is leftmost;
+// slivers fan out to the right, each keeping its own rounded ╯ corner. Capped to
+// what fits the width (minimum 3 cards).
+func hFan(count, w int) (fill, floor string) {
 	cap := (w - 12) / 3
 	if cap < 3 {
 		cap = 3
@@ -642,16 +678,17 @@ func hFan(count, w int) (string, string) {
 	if n > cap {
 		n = cap
 	}
-	if n <= 0 {
-		return "|", "|"
+	if n < 1 {
+		n = 1
 	}
-	top := "|    " // front card (4 wide)
-	bot := "|____"
+	var fb, fl strings.Builder
+	fb.WriteString("│░░░│") // wide front card
+	fl.WriteString("╰───╯")
 	for i := 1; i < n; i++ {
-		top += "|  " // sliver (2 wide)
-		bot += "|__"
+		fb.WriteString("░░│") // sliver
+		fl.WriteString("──╯")
 	}
-	return top + "|", bot + "|"
+	return fb.String(), fl.String()
 }
 
 // vFanLeft draws the left opponent's sideways fan, larger front card at the
@@ -659,17 +696,17 @@ func hFan(count, w int) (string, string) {
 // body toward the centre; off turn it shrinks so the card recedes to the anchored
 // left edge.
 func vFanLeft(count, budget int, active bool) []string {
-	body, gap := "_", " "
+	body, gap := "─", " "
 	if active {
-		body, gap = "___", "   "
+		body, gap = "░░░", "   " // reaches toward centre, ░ pattern on their turn
 	}
 	cards := clampi(count, 1, maxi(budget-2, 1))
 	rows := make([]string, 0, cards+2)
 	rows = append(rows, body)
 	for i := 1; i < cards; i++ {
-		rows = append(rows, body+"|")
+		rows = append(rows, body+"│")
 	}
-	rows = append(rows, gap+"|", body+"|") // larger front card at the bottom
+	rows = append(rows, gap+"│", body+"│") // larger front card at the bottom
 	return rows
 }
 
@@ -677,15 +714,15 @@ func vFanLeft(count, budget int, active bool) []string {
 // slivers showing the centre-facing left edge, receding to the anchored right edge
 // off turn.
 func vFanRight(count, budget int, active bool) []string {
-	body, gap := "_", " "
+	body, gap := "─", " "
 	if active {
-		body, gap = "___", "   "
+		body, gap = "░░░", "   "
 	}
 	slivers := clampi(count-1, 0, maxi(budget-3, 0))
 	rows := make([]string, 0, slivers+3)
-	rows = append(rows, " "+body, "|"+gap, "|"+body) // larger front card at the top
+	rows = append(rows, " "+body, "│"+gap, "│"+body) // larger front card at the top
 	for i := 0; i < slivers; i++ {
-		rows = append(rows, "|"+body)
+		rows = append(rows, "│"+body)
 	}
 	return rows
 }
