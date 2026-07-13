@@ -4,24 +4,26 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// styles keeps the board plain. The only colours are the card face (red for
-// hearts/diamonds, default for spades/clubs - rank and suit alike) and an
-// opponent's card-back, which turns blue and fills with a ░ pattern on their turn.
-// The turn cue for the viewer stays the [brackets]; cursor/selection are geometry
-// (the "*" and the lift), not colour.
+// styles is a two-step gray text hierarchy over the default foreground, plus the two
+// card accents (red faces, blue ░ back). primary is the default fg (max contrast on
+// any theme; headlines add Bold); secondary/tertiary recede to gray for peripheral
+// text and markers. The turn cue for the viewer stays the [brackets]; card selection
+// is geometry (the lift), not colour.
 type styles struct {
-	faint   lipgloss.Style
-	turn    lipgloss.Style
-	suitRed lipgloss.Style // red card faces: hearts, diamonds
-	back    lipgloss.Style // opponent card-back on their turn
+	primary   lipgloss.Style // default fg: labels on turn, faces, prompts, headlines
+	secondary lipgloss.Style // gray: footer, inactive labels, markers, cursor
+	tertiary  lipgloss.Style // dim gray: passed/gone/scroll, empty seats
+	suitRed   lipgloss.Style // red card faces: hearts, diamonds
+	back      lipgloss.Style // opponent card-back ░ on their turn
 }
 
 func newStyles(r *lipgloss.Renderer) styles {
-	plain := r.NewStyle()
+	gray := r.NewStyle().Foreground(lipgloss.Color("8")) // bright-black, tracks theme
 	return styles{
-		faint:   plain,
-		turn:    plain, // turn emphasis stays the [brackets], not colour
-		suitRed: r.NewStyle().Foreground(lipgloss.Color("1")),
-		back:    r.NewStyle().Foreground(lipgloss.Color("4")), // blue
+		primary:   r.NewStyle(),
+		secondary: gray,
+		tertiary:  gray.Faint(true), // degrades to secondary where Faint is ignored
+		suitRed:   r.NewStyle().Foreground(lipgloss.Color("1")),
+		back:      r.NewStyle().Foreground(lipgloss.Color("4")), // blue
 	}
 }

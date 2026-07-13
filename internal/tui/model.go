@@ -592,7 +592,7 @@ func (m *Model) viewContent() string {
 		return m.renderKicked()
 	}
 	if m.snap == nil {
-		return m.center("connecting...")
+		return m.center(m.st.secondary.Render("connecting..."))
 	}
 	switch m.snap.Phase {
 	case protocol.Waiting:

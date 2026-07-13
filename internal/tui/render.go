@@ -42,9 +42,9 @@ func (m *Model) playerAtRel(rel int) protocol.PlayerView {
 func (m *Model) label(p protocol.PlayerView) string {
 	inner := fmt.Sprintf("%c %d", m.letterFor(p.Seat), p.CardCount)
 	if m.showTurn(p) {
-		return m.st.turn.Render("[" + inner + "]")
+		return m.st.primary.Render("[" + inner + "]") // active: primary, in brackets
 	}
-	return " " + inner + " "
+	return m.st.secondary.Render(" " + inner + " ") // inactive: gray, same width
 }
 
 // showTurn reports whether p should be drawn as the active player: it is their turn
@@ -58,7 +58,7 @@ func (m *Model) showTurn(p protocol.PlayerView) bool {
 // turn is never marked.
 func (m *Model) oppMark(p protocol.PlayerView, arrow string) string {
 	if !p.Connected {
-		return "D" // left the game
+		return "⊘" // left the game (boss-maps back to "D")
 	}
 	if p.IsYou && m.isMyTurn() {
 		return ""
@@ -67,7 +67,7 @@ func (m *Model) oppMark(p protocol.PlayerView, arrow string) string {
 		return arrow
 	}
 	if p.Passed {
-		return "X"
+		return "✗" // passed this trick (boss-maps back to "X")
 	}
 	return ""
 }
@@ -82,6 +82,9 @@ var bossReplacer = strings.NewReplacer(
 	"░", " ",
 	vs15, "",
 	"♦", "D", "♣", "C", "♥", "H", "♠", "S",
+	// markers back to their ASCII ancestors, so boss mode stays column-identical
+	"▴", "^", "▾", "v", "▸", ">", "◂", "<",
+	"✗", "X", "⊘", "D", "‹", "<", "›", ">", "∙", "*", "✓", "*",
 	"|", " ", "_", " ", // legacy ASCII borders, harmless
 )
 
@@ -115,7 +118,8 @@ func botTag(p protocol.PlayerView) string {
 // tooSmall is the shared "enlarge your terminal" screen, shown once the window
 // drops below the minimum.
 func (m *Model) tooSmall() string {
-	return m.center(fmt.Sprintf("enlarge terminal to %dx%d\n(now %dx%d)", minW, minH, m.w, m.h))
+	return m.center(fmt.Sprintf("enlarge terminal to %dx%d", minW, minH) +
+		"\n" + m.st.secondary.Render(fmt.Sprintf("(now %dx%d)", m.w, m.h)))
 }
 
 func (m *Model) renderGame() string {
@@ -125,7 +129,7 @@ func (m *Model) renderGame() string {
 	// Bottom edge: an always-visible error line above the hand, centred over the
 	// table.
 	self := lipgloss.PlaceHorizontal(w, lipgloss.Center, m.selfBand())
-	footer := lipgloss.PlaceHorizontal(w, lipgloss.Center, m.st.faint.Render(gameFooter(w)))
+	footer := lipgloss.PlaceHorizontal(w, lipgloss.Center, m.st.secondary.Render(gameFooter(w)))
 	bottom := lipgloss.JoinVertical(lipgloss.Left,
 		m.errorLine(w),
 		self,
@@ -180,8 +184,8 @@ func (m *Model) topBand(n, w int) string {
 		return lipgloss.JoinVertical(lipgloss.Left,
 			m.paintBack(fill), floor+m.label(p))
 	}
-	// Off turn: "v" played, "X" passed, blank otherwise, centred under the floor.
-	mark := lipgloss.PlaceHorizontal(lipgloss.Width(floor), lipgloss.Center, m.oppMark(p, "v"))
+	// Off turn: ▾ played, ✗ passed, ⊘ gone, blank otherwise, centred under the floor.
+	mark := lipgloss.PlaceHorizontal(lipgloss.Width(floor), lipgloss.Center, m.styleMark(m.oppMark(p, "▾")))
 	return lipgloss.JoinVertical(lipgloss.Left, floor+m.label(p), mark)
 }
 
@@ -247,21 +251,23 @@ func (m *Model) sideBlock(p protocol.PlayerView, budget int, leftSide bool) stri
 	}
 	var fan []string
 	active := m.showTurn(p)
-	align, arrow := lipgloss.Left, ">"
+	align, arrow := lipgloss.Left, "▸"
 	if leftSide {
 		fan = vFanLeft(p.CardCount, budget, active)
 	} else {
 		fan = vFanRight(p.CardCount, budget, active)
-		align, arrow = lipgloss.Right, "<"
+		align, arrow = lipgloss.Right, "◂"
 	}
-	// Last-play marker on the centre-facing side, vertically centred: ">"/"<"
-	// played, "X" passed.
+	// Last-play marker on the centre-facing side, vertically centred: ▸/◂ points at
+	// the pile if they hold it, ✗ passed, ⊘ gone. Coloured by tier before the ░ paint
+	// (paintBack groups by ░, so the marker's escape stays intact).
 	if mark := m.oppMark(p, arrow); mark != "" && len(fan) > 0 {
+		styled := m.styleMark(mark)
 		mid := len(fan) / 2
 		if leftSide {
-			fan[mid] = fan[mid] + " " + mark
+			fan[mid] = fan[mid] + " " + styled
 		} else {
-			fan[mid] = mark + " " + fan[mid]
+			fan[mid] = styled + " " + fan[mid]
 		}
 	}
 	// On their turn the ░ back-pattern shows blue; the outline stays plain.
@@ -470,14 +476,15 @@ func (m *Model) selfBand() string {
 		for i := range mrow {
 			mrow[i] = ' '
 		}
-		if mk := m.oppMark(me, "^"); mk != "" {
+		if mk := m.oppMark(me, "▴"); mk != "" {
 			mrow[(totalW-1)/2] = []rune(mk)[0]
+			mtag[(totalW-1)/2] = markTier(mk)
 		}
 		runeRows = [][]rune{{}, mrow, runeRows[1], runeRows[2]}
 		tagRows = [][]uint8{{}, mtag, tagRows[1], tagRows[2]}
 	}
-	// 2-col left margin keeps the fan aligned. The "<"/">" scroll flags ride on row
-	// 2 either way (the face row on turn, a row above the dropped cards off turn),
+	// 2-col left margin keeps the fan aligned. The ‹/› scroll flags (tertiary) ride on
+	// row 2 either way (the face row on turn, a row above the dropped cards off turn),
 	// overwriting the margin. All edits stay in the rune/tag domain so painting can
 	// come last (a byte-slice of a coloured row would corrupt the escapes).
 	for r := range runeRows {
@@ -485,11 +492,12 @@ func (m *Model) selfBand() string {
 		tagRows[r] = append([]uint8{tagPlain, tagPlain}, tagRows[r]...)
 	}
 	if moreLeft {
-		runeRows[2][0], runeRows[2][1] = '<', ' '
+		runeRows[2][0], runeRows[2][1] = '‹', ' '
+		tagRows[2][0] = tagTertiary
 	}
 	if moreRight {
-		runeRows[2] = append(runeRows[2], ' ', '>')
-		tagRows[2] = append(tagRows[2], tagPlain, tagPlain)
+		runeRows[2] = append(runeRows[2], ' ', '›')
+		tagRows[2] = append(tagRows[2], tagPlain, tagTertiary)
 	}
 	painted := make([]string, len(runeRows))
 	for r := range runeRows {
@@ -510,11 +518,13 @@ func (m *Model) maxHandCells() int {
 	return n
 }
 
-// colour tags for a composited fan cell: a red card's face (rank and suit) is the
-// only coloured content; everything else is plain.
+// colour tags for a composited fan cell: a red card's face (tagRed), and the gray
+// text-hierarchy tiers used by the cursor / scroll flags / self last-play marker.
 const (
 	tagPlain uint8 = iota
 	tagRed
+	tagSecondary
+	tagTertiary
 )
 
 // selfFan renders the windowed hand as a fixed 4-row fan of rounded tiles. Each card
@@ -595,7 +605,7 @@ func (m *Model) selfFan(hand []game.Card, start, end, cursor int, showCursor boo
 		put(faceRow, L+1, face.Rank.Rune(), faceTag)
 		put(faceRow, L+2, m.suitRune(face.Suit), faceTag)
 		if showCursor && i == cursor {
-			put(bodyRow, L+1, '*', tagPlain)
+			put(bodyRow, L+1, '∙', tagSecondary) // locator dot (boss-maps to *)
 		}
 	}
 	return rows, tags
@@ -622,13 +632,42 @@ func (m *Model) paintTagged(runes []rune, tags []uint8) string {
 			}
 		}
 		s := seg.String()
-		if t == tagRed {
+		switch t {
+		case tagRed:
 			s = m.st.suitRed.Render(s)
+		case tagSecondary:
+			s = m.st.secondary.Render(s)
+		case tagTertiary:
+			s = m.st.tertiary.Render(s)
 		}
 		b.WriteString(s)
 		i = j
 	}
 	return b.String()
+}
+
+// markTier returns the colour tag for a last-play/status marker: the live direction
+// triangles read secondary, the recessive passed/disconnected marks read tertiary.
+func markTier(mark string) uint8 {
+	switch mark {
+	case "✗", "⊘":
+		return tagTertiary
+	case "":
+		return tagPlain
+	}
+	return tagSecondary
+}
+
+// styleMark colours a marker string by its tier (for the string-based top/side call
+// sites; the rune-grid self marker uses markTier + paintTagged instead).
+func (m *Model) styleMark(mark string) string {
+	switch markTier(mark) {
+	case tagSecondary:
+		return m.st.secondary.Render(mark)
+	case tagTertiary:
+		return m.st.tertiary.Render(mark)
+	}
+	return mark
 }
 
 // paintBack colours only the ░ back-pattern runs (blue); the card outline (│─╭╮╰╯)
@@ -754,40 +793,41 @@ func (m *Model) renderWaiting() string {
 	var b strings.Builder
 	for i := 0; i < s.MaxSeats; i++ {
 		if i >= len(s.Players) {
-			b.WriteString("-\n")
+			b.WriteString(m.st.tertiary.Render("-") + "\n") // empty seat recedes
 			continue
 		}
 		p := s.Players[i]
-		line := string(m.letterFor(p.Seat))
+		line := string(m.letterFor(p.Seat)) // the identity: primary (default fg)
 		switch {
 		case botTag(p) != "":
-			line += " " + botTag(p)
+			line += m.st.secondary.Render(" " + botTag(p))
 		case youHostTag(p) != "":
-			line += " " + youHostTag(p)
+			line += m.st.secondary.Render(" " + youHostTag(p))
 		}
 		if !p.Connected {
-			line += " (gone)"
+			line += m.st.tertiary.Render(" (gone)")
 		}
 		b.WriteString(line + "\n")
 	}
 	b.WriteString("\n")
 	// Status first, so the host always sees how to start (or why they can't yet).
+	// Actionable status is primary; a blocked/passive one recedes to secondary.
 	switch {
 	case s.IsHost && len(s.Players) >= s.MinStart:
-		b.WriteString("enter  start\n")
+		b.WriteString(m.st.primary.Render("enter  start") + "\n")
 	case s.IsHost:
-		b.WriteString(fmt.Sprintf("need %d+ to start\n", s.MinStart))
+		b.WriteString(m.st.secondary.Render(fmt.Sprintf("need %d+ to start", s.MinStart)) + "\n")
 	default:
-		b.WriteString("waiting for host...\n")
+		b.WriteString(m.st.secondary.Render("waiting for host...") + "\n")
 	}
-	b.WriteString("\na-z    pick letter")
+	legend := []string{"a-z    pick letter"}
 	if s.IsHost {
-		b.WriteString(fmt.Sprintf("\n1-9    bot level (%d)", m.pendingBotLevel))
-		b.WriteString("\n+/-    add/remove bot")
+		legend = append(legend, fmt.Sprintf("1-9    bot level (%d)", m.pendingBotLevel), "+/-    add/remove bot")
 	}
-	b.WriteString("\nesc    quit")
+	legend = append(legend, "esc    quit")
+	b.WriteString("\n" + m.st.secondary.Render(strings.Join(legend, "\n")))
 	if m.joinHint != "" {
-		b.WriteString("\n\n" + m.joinHint)
+		b.WriteString("\n\n" + m.st.secondary.Render(m.joinHint))
 	}
 	return m.centerBlock(b.String())
 }
@@ -798,25 +838,38 @@ func (m *Model) renderOver() string {
 	s := m.snap
 	var b strings.Builder
 	if s.Winner >= 0 {
-		b.WriteString(m.st.turn.Render(fmt.Sprintf("%c wins", m.letterFor(s.Winner))) + "\n\n")
+		b.WriteString(m.st.primary.Bold(true).Render(fmt.Sprintf("%c wins", m.letterFor(s.Winner))) + "\n\n")
 	}
 	for _, p := range rankByScore(s.Players) {
-		mark := ""
+		tag := ""
 		switch {
 		case botTag(p) != "":
-			mark = "  " + botTag(p)
+			tag = "  " + botTag(p)
 		case youHostTag(p) != "":
-			mark = "  " + youHostTag(p)
+			tag = "  " + youHostTag(p)
 		}
-		b.WriteString(fmt.Sprintf("%c %4d%s\n", m.letterFor(p.Seat), p.Score, mark))
+		pre := "  " // winner gets a ✓, others indent to keep columns aligned
+		if p.Seat == s.Winner {
+			pre = "✓ "
+		}
+		row := fmt.Sprintf("%s%c %4d", pre, m.letterFor(p.Seat), p.Score)
+		if p.Seat == s.Winner {
+			row = m.st.primary.Render(row)
+		} else {
+			row = m.st.secondary.Render(row)
+		}
+		if tag != "" {
+			row += m.st.tertiary.Render(tag)
+		}
+		b.WriteString(row + "\n")
 	}
 	b.WriteString("\n")
 	if s.IsHost {
-		b.WriteString("enter    next hand")
+		b.WriteString(m.st.primary.Render("enter    next hand"))
 	} else {
-		b.WriteString("waiting for host...")
+		b.WriteString(m.st.secondary.Render("waiting for host..."))
 	}
-	b.WriteString("\nesc      quit")
+	b.WriteString("\n" + m.st.secondary.Render("esc      quit"))
 	return m.centerBlock(b.String())
 }
 
@@ -841,7 +894,7 @@ func rankByScore(players []protocol.PlayerView) []protocol.PlayerView {
 // ---- kicked ----
 
 func (m *Model) renderKicked() string {
-	return m.centerBlock(m.kicked + "\n\n" + m.st.faint.Render("press any key to disconnect"))
+	return m.centerBlock(m.kicked + "\n\n" + m.st.tertiary.Render("press any key to disconnect"))
 }
 
 // gameFooter is the always-present in-game key legend, shortened on narrow

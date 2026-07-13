@@ -125,11 +125,28 @@ func TestSelfFanRoundedTiles(t *testing.T) {
 		"      ╭────╮      ",
 		"╭──╭──│9♥╭──╭────╮",
 		"│4♦│7♣│  │J♠│2♠  │",
-		"│  │* ╰──│  │    │",
+		"│  │∙ ╰──│  │    │",
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Errorf("self-fan mismatch:\n got:\n%s\nwant:\n%s",
 			strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+// TestMarkerGlyphsSafe pins every new marker/status glyph to width-1 and to its
+// ASCII ancestor under the boss disguise, so the board can't shear and boss mode
+// stays column-identical.
+func TestMarkerGlyphsSafe(t *testing.T) {
+	for _, tc := range []struct{ glyph, ascii string }{
+		{"▴", "^"}, {"▾", "v"}, {"▸", ">"}, {"◂", "<"}, {"✗", "X"},
+		{"⊘", "D"}, {"‹", "<"}, {"›", ">"}, {"∙", "*"}, {"✓", "*"},
+	} {
+		if w := lipgloss.Width(tc.glyph); w != 1 {
+			t.Errorf("%q width = %d, want 1", tc.glyph, w)
+		}
+		if got := bossReplacer.Replace(tc.glyph); got != tc.ascii {
+			t.Errorf("boss %q -> %q, want %q", tc.glyph, got, tc.ascii)
+		}
 	}
 }
 
