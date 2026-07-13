@@ -855,6 +855,8 @@ func (m *Model) renderOver() string {
 	if s.Winner >= 0 {
 		b.WriteString(m.st.primary.Bold(true).Render(fmt.Sprintf("%c wins", m.letterFor(s.Winner))) + "\n\n")
 	}
+	// Scoreboard rows read like the lobby roster: primary letter+score, secondary
+	// tags. The winner is named by the headline, not by a per-row colour.
 	for _, p := range rankByScore(s.Players) {
 		tag := ""
 		switch {
@@ -863,14 +865,9 @@ func (m *Model) renderOver() string {
 		case youHostTag(p) != "":
 			tag = "  " + youHostTag(p)
 		}
-		row := fmt.Sprintf("%c %4d", m.letterFor(p.Seat), p.Score)
-		if p.Seat == s.Winner {
-			row = m.st.primary.Render(row) // winner: primary; the headline names them
-		} else {
-			row = m.st.secondary.Render(row)
-		}
+		row := m.st.primary.Render(fmt.Sprintf("%c %4d", m.letterFor(p.Seat), p.Score))
 		if tag != "" {
-			row += m.st.tertiary.Render(tag)
+			row += m.st.secondary.Render(tag)
 		}
 		b.WriteString(row + "\n")
 	}
