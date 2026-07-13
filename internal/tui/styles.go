@@ -6,9 +6,8 @@ import (
 
 // styles is a two-step gray text hierarchy over the default foreground, plus the two
 // card accents (red faces, blue ░ back). primary is the default fg (max contrast on
-// any theme; headlines add Bold); secondary/tertiary recede to gray for peripheral
-// text and markers. The turn cue for the viewer stays the [brackets]; card selection
-// is geometry (the lift), not colour.
+// any theme); secondary/tertiary recede to gray for peripheral text and markers.
+// Card selection is geometry (the lift), not colour.
 type styles struct {
 	primary   lipgloss.Style // default fg: labels on turn, faces, prompts, headlines
 	secondary lipgloss.Style // gray: footer, inactive labels, markers, cursor

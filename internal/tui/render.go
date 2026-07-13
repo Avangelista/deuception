@@ -189,8 +189,11 @@ func (m *Model) topBand(n, w int) string {
 		return lipgloss.JoinVertical(lipgloss.Left,
 			m.paintBack(fill, true)+" "+m.label(p), m.paintBack(floor, true))
 	}
-	mark := lipgloss.PlaceHorizontal(lipgloss.Width(floor), lipgloss.Center, m.styleMark(m.oppMark(p, "▴")))
-	return lipgloss.JoinVertical(lipgloss.Left, m.paintBack(floor, false)+" "+m.label(p), mark)
+	// Centre the marker over the whole band (label included) so it lands at screen
+	// centre, aligned with the on-turn ▴ pointer (which lives in the pile gap).
+	row0 := m.paintBack(floor, false) + " " + m.label(p)
+	mark := lipgloss.PlaceHorizontal(lipgloss.Width(row0), lipgloss.Center, m.styleMark(m.oppMark(p, "▴")))
+	return lipgloss.JoinVertical(lipgloss.Left, row0, mark)
 }
 
 // midRow: left opponent flush-left, right opponent flush-right, pile centred,
@@ -262,10 +265,14 @@ func (m *Model) sideBlock(p protocol.PlayerView, budget int, leftSide bool) stri
 		fan = vFanRight(p.CardCount, budget, active)
 		align, arrow = lipgloss.Right, "▸" // right opponent: ▸ points right at their fan
 	}
-	// Status marker on the centre-facing side, vertically centred: the pointer at
-	// their fan on turn, ✗ passed, ⊘ gone. Injected raw; paintBack colours it (primary
-	// on turn, else secondary) along with the outline - ░ goes blue.
-	if mark := m.oppMark(p, arrow); mark != "" && len(fan) > 0 {
+	// Paint the fan first: primary outline on their turn (blue ░), else secondary gray.
+	for i := range fan {
+		fan[i] = m.paintBack(fan[i], active)
+	}
+	// Then inject the (secondary) status marker on the centre-facing side, vertically
+	// centred: the pointer at their fan on turn, ✗ passed, ⊘ gone. Injected after the
+	// paint so it stays secondary even when the active border is primary.
+	if mark := m.styleMark(m.oppMark(p, arrow)); mark != "" && len(fan) > 0 {
 		mid := len(fan) / 2
 		if leftSide {
 			fan[mid] = fan[mid] + " " + mark
@@ -273,11 +280,7 @@ func (m *Model) sideBlock(p protocol.PlayerView, budget int, leftSide bool) stri
 			fan[mid] = mark + " " + fan[mid]
 		}
 	}
-	// Primary outline on their turn (blue ░), else secondary gray. The label sits on
-	// its own row, so the side fan gets no gap before it.
-	for i := range fan {
-		fan[i] = m.paintBack(fan[i], active)
-	}
+	// The label sits on its own row, so the side fan gets no gap before it.
 	return lipgloss.JoinVertical(align, append(fan, m.label(p))...)
 }
 
@@ -324,6 +327,11 @@ func (m *Model) pileBoxLines(cs []game.Card) []string {
 func (m *Model) paintPileRow(row []rune) string {
 	tags := make([]uint8, len(row))
 	for i, r := range row {
+		switch r {
+		case '▴', '▾', '◂', '▸': // the active-turn pointer in the pile gap
+			tags[i] = tagSecondary
+			continue
+		}
 		if isRed, isSuit := m.suitInfo(r); isSuit && isRed {
 			tags[i] = tagRed
 			if i > 0 && tags[i-1] == tagPlain { // the rank sits just left of its pip
@@ -472,10 +480,8 @@ func (m *Model) selfBand() string {
 		for i := range mrow {
 			mrow[i] = ' '
 		}
-		if mk := m.oppMark(me, "▾"); mk != "" { // off turn: ✗ passed / ⊘ gone (never ▾)
-			mrow[(totalW-1)/2] = []rune(mk)[0]
-			mtag[(totalW-1)/2] = markTier(mk)
-		}
+		// Your status marker (▾ turn / ✗ passed) lives in the error line above the
+		// hand, screen-centred, so this row stays blank.
 		runeRows = [][]rune{{}, mrow, runeRows[1], runeRows[2]}
 		tagRows = [][]uint8{{}, mtag, tagRows[1], tagRows[2]}
 	}
@@ -647,23 +653,22 @@ func (m *Model) paintTagged(runes []rune, tags []uint8) string {
 	return b.String()
 }
 
-// markTier returns the colour tag for a status marker: the active-turn pointer reads
-// primary (it is the whose-turn cue), the recessive passed ✗ / gone ⊘ read secondary.
+// markTier returns the colour tag for a status marker: all of them (the turn
+// pointer, passed ✗, gone ⊘) read secondary.
 func markTier(mark string) uint8 {
-	switch mark {
-	case "✗", "⊘":
-		return tagSecondary
+	if mark == "" {
+		return tagPlain
 	}
-	return tagPlain // pointers ▴▾◂▸ (and "") : primary/default
+	return tagSecondary
 }
 
-// styleMark colours a marker string by its tier (for the string call sites; the
+// styleMark colours a marker string secondary (for the string call sites; the
 // rune-grid self marker uses markTier + paintTagged instead).
 func (m *Model) styleMark(mark string) string {
-	if markTier(mark) == tagSecondary {
-		return m.st.secondary.Render(mark)
+	if mark == "" {
+		return mark
 	}
-	return m.st.primary.Render(mark)
+	return m.st.secondary.Render(mark)
 }
 
 // paintBack colours an opponent card-back row: the ░ pattern goes blue; the outline
@@ -705,15 +710,18 @@ func (m *Model) paintBack(s string, active bool) string {
 	return b.String()
 }
 
-// errorLine is the always-visible line above the hand: an inline error/hint (e.g.
-// "not your turn") when there is one, else - on your turn - the ▾ pointer pointing
-// down at your hand, else blank. Centred and wrapped to width.
+// errorLine is the always-visible line above the hand: an inline error/hint when
+// there is one, else your own status marker centred over the board - ▾ pointing down
+// at your hand on your turn, ✗ if you passed - else blank. Both the turn pointer and
+// the passed mark share this one screen-centred slot so they never drift apart.
 func (m *Model) errorLine(w int) string {
 	if m.hint != "" {
 		return m.r.NewStyle().Width(w).Align(lipgloss.Center).Render(m.hint)
 	}
-	if m.snap != nil && m.isMyTurn() {
-		return lipgloss.PlaceHorizontal(w, lipgloss.Center, m.styleMark("▾"))
+	if m.snap != nil && m.snap.YouSeat < len(m.snap.Players) {
+		if mk := m.oppMark(m.snap.Players[m.snap.YouSeat], "▾"); mk != "" {
+			return lipgloss.PlaceHorizontal(w, lipgloss.Center, m.styleMark(mk))
+		}
 	}
 	return ""
 }
@@ -853,17 +861,18 @@ func (m *Model) renderOver() string {
 	s := m.snap
 	var b strings.Builder
 	if s.Winner >= 0 {
-		b.WriteString(m.st.primary.Bold(true).Render(fmt.Sprintf("%c wins", m.letterFor(s.Winner))) + "\n\n")
+		b.WriteString(m.st.primary.Render(fmt.Sprintf("%c wins", m.letterFor(s.Winner))) + "\n\n")
 	}
 	// Scoreboard rows read like the lobby roster: primary letter+score, secondary
-	// tags. The winner is named by the headline, not by a per-row colour.
+	// tags (one space before the tag, as in the lobby). The winner is named by the
+	// headline, not by a per-row colour.
 	for _, p := range rankByScore(s.Players) {
 		tag := ""
 		switch {
 		case botTag(p) != "":
-			tag = "  " + botTag(p)
+			tag = " " + botTag(p)
 		case youHostTag(p) != "":
-			tag = "  " + youHostTag(p)
+			tag = " " + youHostTag(p)
 		}
 		row := m.st.primary.Render(fmt.Sprintf("%c %4d", m.letterFor(p.Seat), p.Score))
 		if tag != "" {
@@ -877,7 +886,8 @@ func (m *Model) renderOver() string {
 	} else {
 		b.WriteString(m.st.secondary.Render("waiting for host..."))
 	}
-	b.WriteString("\n" + m.st.secondary.Render("esc    quit"))
+	// Blank line before the esc legend, matching the lobby's status/legend spacing.
+	b.WriteString("\n\n" + m.st.secondary.Render("esc    quit"))
 	return m.centerBlock(b.String())
 }
 
