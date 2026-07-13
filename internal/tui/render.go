@@ -682,10 +682,10 @@ func hFan(count, w int) (fill, floor string) {
 		n = 1
 	}
 	var fb, fl strings.Builder
-	fb.WriteString("│░░░░│") // wide front card (matches the pile/hand front card)
+	fb.WriteString("│ ░░ │") // wide front card, spaced ░ checker
 	fl.WriteString("╰────╯")
 	for i := 1; i < n; i++ {
-		fb.WriteString("░░│") // sliver
+		fb.WriteString("░ │") // sliver
 		fl.WriteString("──╯")
 	}
 	return fb.String(), fl.String()
@@ -696,25 +696,24 @@ func hFan(count, w int) (fill, floor string) {
 // body toward the centre; off turn it shrinks so the card recedes to the anchored
 // left edge.
 func vFanLeft(count, budget int, active bool) []string {
-	// Each card shows its centre-facing (right) edge: a ╮ top corner then │ borders,
-	// the wide front card (4 rows, ╮││╯) at the bottom, slivers (2 rows, ╮│) above.
-	// On their turn the body opens toward the centre with ──/░ (only the ░ is blue).
-	top, border, bot := "╮", "│", "╯"
+	// Slivers show just their centre-facing top corner (╮), stacked; the wide front
+	// card (3 rows, ╮ │ ╯) sits at the bottom. On their turn the body opens toward
+	// the centre with ──/░ (only the ░ is blue).
+	sliver, front := "╮", []string{"╮", "│", "╯"}
 	if active {
-		top, border, bot = "──╮", "░ │", "──╯"
+		sliver, front = "──╮", []string{"──╮", "░ │", "──╯"}
 	}
 	slivers := vFanSlivers(count, budget)
-	rows := make([]string, 0, 2*slivers+4)
+	rows := make([]string, 0, slivers+3)
 	for i := 0; i < slivers; i++ {
-		rows = append(rows, top, border)
+		rows = append(rows, sliver)
 	}
-	rows = append(rows, top, border, border, bot) // wide front card, at the bottom
-	return rows
+	return append(rows, front...) // wide front card, at the bottom
 }
 
-// vFanSlivers is how many 2-row sliver backs fit above/below the 4-row front card.
+// vFanSlivers is how many single-row sliver backs fit above the 3-row front card.
 func vFanSlivers(count, budget int) int {
-	n := (budget - 4) / 2
+	n := budget - 3
 	if n < 0 {
 		n = 0
 	}
@@ -728,19 +727,18 @@ func vFanSlivers(count, budget int) int {
 // slivers showing the centre-facing left edge, receding to the anchored right edge
 // off turn.
 func vFanRight(count, budget int, active bool) []string {
-	// Mirror of vFanLeft: the centre-facing edge is the left (╭ │ ╰), the wide front
-	// card (4 rows) is at the top, slivers below, and the body opens to the right.
-	top, border, bot := "╭", "│", "╰"
+	// Mirror of vFanLeft: the centre-facing edge is the left (╭ │ ╰), the body opens
+	// to the right, the wide front card (3 rows) at the bottom, slivers above.
+	sliver, front := "╭", []string{"╭", "│", "╰"}
 	if active {
-		top, border, bot = "╭──", "│ ░", "╰──"
+		sliver, front = "╭──", []string{"╭──", "│ ░", "╰──"}
 	}
 	slivers := vFanSlivers(count, budget)
-	rows := make([]string, 0, 2*slivers+4)
-	rows = append(rows, top, border, border, bot) // wide front card, at the top
+	rows := make([]string, 0, slivers+3)
 	for i := 0; i < slivers; i++ {
-		rows = append(rows, top, border)
+		rows = append(rows, sliver)
 	}
-	return rows
+	return append(rows, front...) // wide front card, at the bottom
 }
 
 // ---- waiting room ----
