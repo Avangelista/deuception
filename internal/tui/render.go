@@ -174,8 +174,9 @@ func (m *Model) topBand(n, w int) string {
 	// horizontally). The band is a fixed 2 rows so the board never shifts: on turn
 	// the ░ back grows down toward the centre above the floor, off turn only the
 	// floor shows (receded to the top edge) and row 2 holds the last-play marker.
-	fill, floor := hFan(p.CardCount, w)
-	if m.showTurn(p) {
+	active := m.showTurn(p)
+	fill, floor := hFan(p.CardCount, w, active)
+	if active {
 		return lipgloss.JoinVertical(lipgloss.Left,
 			m.paintBack(fill), floor+m.label(p))
 	}
@@ -666,10 +667,10 @@ func (m *Model) errorLine(w int) string {
 // ---- card-back fans (front card drawn larger, like a real fan) ----
 
 // hFan draws the top opponent's fan of rounded card-backs as two rows: a ░-filled
-// body (shown on their turn) and a rounded floor. The wide front card is leftmost;
-// slivers fan out to the right, each keeping its own rounded ╯ corner. Capped to
-// what fits the width (minimum 3 cards).
-func hFan(count, w int) (fill, floor string) {
+// body (fill, shown only on their turn) over a rounded floor. The wide front card
+// is leftmost; slivers fan out to the right, each keeping its own rounded ╯ corner.
+// Capped to what fits the width (minimum 3 cards).
+func hFan(count, w int, active bool) (fill, floor string) {
 	cap := (w - 12) / 3
 	if cap < 3 {
 		cap = 3
@@ -688,6 +689,9 @@ func hFan(count, w int) (fill, floor string) {
 		fb.WriteString("░ │") // sliver
 		fl.WriteString("──╯")
 	}
+	if !active {
+		return "", fl.String()
+	}
 	return fb.String(), fl.String()
 }
 
@@ -696,24 +700,24 @@ func hFan(count, w int) (fill, floor string) {
 // body toward the centre; off turn it shrinks so the card recedes to the anchored
 // left edge.
 func vFanLeft(count, budget int, active bool) []string {
-	// Slivers show just their centre-facing top corner (╮), stacked; the wide front
-	// card (3 rows, ╮ │ ╯) sits at the bottom. On their turn the body opens toward
-	// the centre with ──/░ (only the ░ is blue).
-	sliver, front := "╮", []string{"╮", "│", "╯"}
+	// Each card shows its centre-facing (right) edge: a ╮ top corner then a │ border
+	// (2-row sliver), the wide front card (4 rows, ╮ │ │ ╯) at the bottom. On their
+	// turn the body opens toward the centre with ──/░ (only the ░ is blue).
+	top, border, bot := "╮", "│", "╯"
 	if active {
-		sliver, front = "──╮", []string{"──╮", "░ │", "──╯"}
+		top, border, bot = "──╮", "░ │", "──╯"
 	}
 	slivers := vFanSlivers(count, budget)
-	rows := make([]string, 0, slivers+3)
+	rows := make([]string, 0, 2*slivers+4)
 	for i := 0; i < slivers; i++ {
-		rows = append(rows, sliver)
+		rows = append(rows, top, border)
 	}
-	return append(rows, front...) // wide front card, at the bottom
+	return append(rows, top, border, border, bot) // wide front card, at the bottom
 }
 
-// vFanSlivers is how many single-row sliver backs fit above the 3-row front card.
+// vFanSlivers is how many 2-row sliver backs fit above/below the 4-row front card.
 func vFanSlivers(count, budget int) int {
-	n := budget - 3
+	n := (budget - 4) / 2
 	if n < 0 {
 		n = 0
 	}
@@ -727,18 +731,20 @@ func vFanSlivers(count, budget int) int {
 // slivers showing the centre-facing left edge, receding to the anchored right edge
 // off turn.
 func vFanRight(count, budget int, active bool) []string {
-	// Mirror of vFanLeft: the centre-facing edge is the left (╭ │ ╰), the body opens
-	// to the right, the wide front card (3 rows) at the bottom, slivers above.
-	sliver, front := "╭", []string{"╭", "│", "╰"}
+	// Mirror of vFanLeft: centre-facing edge on the left (╭ │ ╰), body opening to the
+	// right. The wide front card (4 rows, ╭ │ │ ╰) is at the TOP; slivers (│ then the
+	// ╰ bottom corner) hang below it.
+	top, border, bot := "╭", "│", "╰"
 	if active {
-		sliver, front = "╭──", []string{"╭──", "│ ░", "╰──"}
+		top, border, bot = "╭──", "│ ░", "╰──"
 	}
 	slivers := vFanSlivers(count, budget)
-	rows := make([]string, 0, slivers+3)
+	rows := make([]string, 0, 2*slivers+4)
+	rows = append(rows, top, border, border, bot) // wide front card, at the top
 	for i := 0; i < slivers; i++ {
-		rows = append(rows, sliver)
+		rows = append(rows, border, bot)
 	}
-	return append(rows, front...) // wide front card, at the bottom
+	return rows
 }
 
 // ---- waiting room ----

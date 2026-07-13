@@ -136,12 +136,44 @@ func TestSelfFanRoundedTiles(t *testing.T) {
 // TestHFanMatchesDemo2 checks the top opponent's back matches demo2.txt: a ░-filled
 // body and a rounded floor, wide front card leftmost, each card keeping its ╯ corner.
 func TestHFanMatchesDemo2(t *testing.T) {
-	fill, floor := hFan(6, 80)
-	if fill != "│ ░░ │░ │░ │░ │░ │░ │" {
-		t.Errorf("fill body = %q", fill)
+	// On turn: spaced ░ checker body over the floor.
+	fill, floor := hFan(4, 80, true)
+	if fill != "│ ░░ │░ │░ │░ │" {
+		t.Errorf("on-turn fill = %q", fill)
 	}
-	if floor != "╰────╯──╯──╯──╯──╯──╯" {
-		t.Errorf("floor = %q", floor)
+	if floor != "╰────╯──╯──╯──╯" {
+		t.Errorf("on-turn floor = %q", floor)
+	}
+	// Off turn: same floor, empty fill.
+	fill, floor = hFan(4, 80, false)
+	if fill != "" {
+		t.Errorf("off-turn fill should be empty, got %q", fill)
+	}
+	if floor != "╰────╯──╯──╯──╯" {
+		t.Errorf("off-turn floor = %q", floor)
+	}
+}
+
+// TestSideFansMatchDemo2 pins the side backs to demo2.txt: 2-row slivers around a
+// 4-row front card - left front at the bottom (slivers above), right front at the
+// top (slivers below) - opening ──/░ toward the centre on their turn.
+func TestSideFansMatchDemo2(t *testing.T) {
+	// count 5, budget 12 -> 4 slivers + front.
+	if got := vFanLeft(5, 12, false); strings.Join(got, ",") !=
+		"╮,│,╮,│,╮,│,╮,│,╮,│,│,╯" {
+		t.Errorf("left off = %q", got)
+	}
+	if got := vFanLeft(5, 12, true); strings.Join(got, ",") !=
+		"──╮,░ │,──╮,░ │,──╮,░ │,──╮,░ │,──╮,░ │,░ │,──╯" {
+		t.Errorf("left on = %q", got)
+	}
+	if got := vFanRight(5, 12, false); strings.Join(got, ",") !=
+		"╭,│,│,╰,│,╰,│,╰,│,╰,│,╰" {
+		t.Errorf("right off = %q", got)
+	}
+	if got := vFanRight(5, 12, true); strings.Join(got, ",") !=
+		"╭──,│ ░,│ ░,╰──,│ ░,╰──,│ ░,╰──,│ ░,╰──,│ ░,╰──" {
+		t.Errorf("right on = %q", got)
 	}
 }
 
