@@ -134,7 +134,7 @@ func (m *Model) renderGame() string {
 	if m.boss {
 		footerText = "" // the controls legend would give the game away; blank the row
 	}
-	footer := lipgloss.PlaceHorizontal(w, lipgloss.Center, m.st.secondary.Render(footerText))
+	footer := lipgloss.PlaceHorizontal(w, lipgloss.Center, m.st.tertiary.Render(footerText))
 	bottom := lipgloss.JoinVertical(lipgloss.Left,
 		m.errorLine(w),
 		self,
@@ -185,13 +185,14 @@ func (m *Model) topBand(n, w int) string {
 	// floor shows (receded to the top edge) and row 2 holds the last-play marker.
 	active := m.showTurn(p)
 	fill, floor := hFan(p.CardCount, w, active)
+	// Gray outline (blue ░ on turn); a gap before the label.
+	painted := m.paintBack(floor) + " " + m.label(p)
 	if active {
-		return lipgloss.JoinVertical(lipgloss.Left,
-			m.paintBack(fill), floor+m.label(p))
+		return lipgloss.JoinVertical(lipgloss.Left, m.paintBack(fill), painted)
 	}
 	// Off turn: ▾ played, ✗ passed, ⊘ gone, blank otherwise, centred under the floor.
 	mark := lipgloss.PlaceHorizontal(lipgloss.Width(floor), lipgloss.Center, m.styleMark(m.oppMark(p, "▾")))
-	return lipgloss.JoinVertical(lipgloss.Left, floor+m.label(p), mark)
+	return lipgloss.JoinVertical(lipgloss.Left, painted, mark)
 }
 
 // midRow: left opponent flush-left, right opponent flush-right, pile centred,
@@ -264,22 +265,20 @@ func (m *Model) sideBlock(p protocol.PlayerView, budget int, leftSide bool) stri
 		align, arrow = lipgloss.Right, "◂"
 	}
 	// Last-play marker on the centre-facing side, vertically centred: ▸/◂ points at
-	// the pile if they hold it, ✗ passed, ⊘ gone. Coloured by tier before the ░ paint
-	// (paintBack groups by ░, so the marker's escape stays intact).
+	// the pile if they hold it, ✗ passed, ⊘ gone. Injected raw; paintBack greys it
+	// (and the outline) - ░ goes blue.
 	if mark := m.oppMark(p, arrow); mark != "" && len(fan) > 0 {
-		styled := m.styleMark(mark)
 		mid := len(fan) / 2
 		if leftSide {
-			fan[mid] = fan[mid] + " " + styled
+			fan[mid] = fan[mid] + " " + mark
 		} else {
-			fan[mid] = styled + " " + fan[mid]
+			fan[mid] = mark + " " + fan[mid]
 		}
 	}
-	// On their turn the ░ back-pattern shows blue; the outline stays plain.
-	if active {
-		for i := range fan {
-			fan[i] = m.paintBack(fan[i])
-		}
+	// Gray outline, blue ░ on their turn. The label sits on its own row, so the side
+	// fan gets no gap before it.
+	for i := range fan {
+		fan[i] = m.paintBack(fan[i])
 	}
 	return lipgloss.JoinVertical(align, append(fan, m.label(p))...)
 }
@@ -319,44 +318,35 @@ func (m *Model) pileBoxLines(cs []game.Card) []string {
 	return []string{top.String(), face.String(), body.String(), bottom.String()}
 }
 
-// paintPileRow renders a composited pile row: a red card's face (its rank and its
-// pip) goes red, pips get text presentation; borders keep the default foreground.
-// A red pip is found by rune (suits never collide with ranks/borders), and the rank
-// immediately to its left is coloured with it. Colouring is a pure function of the
-// row, so the pile needs no tag grid.
+// isBorderRune reports whether r is a rounded card-border glyph.
+func isBorderRune(r rune) bool {
+	switch r {
+	case '╭', '─', '╮', '│', '╰', '╯', '┬', '┴':
+		return true
+	}
+	return false
+}
+
+// paintPileRow renders a composited pile row into the colour tiers: borders go
+// secondary (gray), a red card's face (rank + pip) goes red, black faces stay
+// primary. Colouring is a pure function of the row (suits never collide with
+// ranks/borders), so the pile needs no separate tag grid - it builds one here and
+// reuses paintTagged.
 func (m *Model) paintPileRow(row []rune) string {
-	red := make([]bool, len(row))
+	tags := make([]uint8, len(row))
 	for i, r := range row {
+		if isBorderRune(r) {
+			tags[i] = tagSecondary
+			continue
+		}
 		if isRed, isSuit := m.suitInfo(r); isSuit && isRed {
-			red[i] = true
-			if i > 0 {
-				red[i-1] = true // the rank sits just left of its pip
+			tags[i] = tagRed
+			if i > 0 && tags[i-1] == tagPlain { // the rank sits just left of its pip
+				tags[i-1] = tagRed
 			}
 		}
 	}
-	var b strings.Builder
-	for i := 0; i < len(row); {
-		j := i
-		for j < len(row) && red[j] == red[i] {
-			j++
-		}
-		var seg strings.Builder
-		for _, r := range row[i:j] {
-			seg.WriteRune(r)
-			if !m.asciiSuits {
-				if _, isSuit := m.suitInfo(r); isSuit {
-					seg.WriteString(vs15)
-				}
-			}
-		}
-		s := seg.String()
-		if red[i] {
-			s = m.st.suitRed.Render(s)
-		}
-		b.WriteString(s)
-		i = j
-	}
-	return b.String()
+	return m.paintTagged(row, tags)
 }
 
 // pileFloat draws the pile in a w x h block. The current play rests centred; when a
@@ -508,7 +498,7 @@ func (m *Model) selfBand() string {
 	for r := range runeRows {
 		painted[r] = m.paintTagged(runeRows[r], tagRows[r])
 	}
-	painted[3] += label
+	painted[3] += " " + label // a gap between the hand and the label
 	return lipgloss.JoinVertical(lipgloss.Left, painted...)
 }
 
@@ -566,8 +556,8 @@ func (m *Model) selfFan(hand []game.Card, start, end, cursor int, showCursor boo
 			t = 0 // selected: lifted up one row
 		}
 		faceRow, bodyRow, botRow := t+1, t+2, t+3
-		// The border is plain; only the face carries colour. Cursor is the "*"
-		// marker and selection is the lift - both geometry, not colour.
+		// The border is secondary (gray) so the faces read first; the cursor is
+		// primary. Selection is the lift - geometry, not colour.
 		// Roof ╭──, opened to ╭────╮ when this lifted card pops a row above a lower
 		// next card; left/bottom │…╰── (the bottom is on-grid only when lifted).
 		open := false
@@ -582,24 +572,24 @@ func (m *Model) selfFan(hand []game.Card, start, end, cursor int, showCursor boo
 		if open {
 			roofEnd = L + 4
 		}
-		put(t, L, '╭', tagPlain)
+		put(t, L, '╭', tagSecondary)
 		for c := L + 1; c <= roofEnd; c++ {
-			put(t, c, '─', tagPlain)
+			put(t, c, '─', tagSecondary)
 		}
 		if front || open {
-			put(t, roofEnd+1, '╮', tagPlain)
+			put(t, roofEnd+1, '╮', tagSecondary)
 		}
-		put(faceRow, L, '│', tagPlain)
-		put(bodyRow, L, '│', tagPlain)
-		put(botRow, L, '╰', tagPlain)
+		put(faceRow, L, '│', tagSecondary)
+		put(bodyRow, L, '│', tagSecondary)
+		put(botRow, L, '╰', tagSecondary)
 		for c := L + 1; c <= L+faceW; c++ {
-			put(botRow, c, '─', tagPlain)
+			put(botRow, c, '─', tagSecondary)
 		}
 		if front { // the "big" card closes its own right edge
 			rb := L + faceW + 1
-			put(faceRow, rb, '│', tagPlain)
-			put(bodyRow, rb, '│', tagPlain)
-			put(botRow, rb, '╯', tagPlain)
+			put(faceRow, rb, '│', tagSecondary)
+			put(bodyRow, rb, '│', tagSecondary)
+			put(botRow, rb, '╯', tagSecondary)
 		}
 		// Face rank+suit, coloured together (red for hearts/diamonds).
 		face := hand[i]
@@ -610,7 +600,7 @@ func (m *Model) selfFan(hand []game.Card, start, end, cursor int, showCursor boo
 		put(faceRow, L+1, face.Rank.Rune(), faceTag)
 		put(faceRow, L+2, m.suitRune(face.Suit), faceTag)
 		if showCursor && i == cursor {
-			put(bodyRow, L+1, '∙', tagSecondary) // locator dot (boss-maps to *)
+			put(bodyRow, L+1, '∙', tagPlain) // picker: primary (boss-maps to *)
 		}
 	}
 	return rows, tags
@@ -672,22 +662,33 @@ func (m *Model) styleMark(mark string) string {
 	return mark
 }
 
-// paintBack colours only the ░ back-pattern runs (blue); the card outline (│─╭╮╰╯)
-// keeps the default foreground. A row with no ░ (an off-turn back) is returned as-is.
+// paintBack colours an opponent card-back row: the ░ pattern goes blue, the outline
+// (and any injected marker glyph) goes secondary gray, spaces stay bare. Runs are
+// grouped by kind (fill / blank / other) so each is a single escape.
 func (m *Model) paintBack(s string) string {
-	if !strings.ContainsRune(s, '░') {
-		return s
-	}
 	var b strings.Builder
 	runes := []rune(s)
+	kind := func(r rune) int {
+		switch r {
+		case '░':
+			return 1
+		case ' ':
+			return 2
+		}
+		return 0 // outline / marker
+	}
 	for i := 0; i < len(runes); {
+		k := kind(runes[i])
 		j := i
-		for j < len(runes) && (runes[j] == '░') == (runes[i] == '░') {
+		for j < len(runes) && kind(runes[j]) == k {
 			j++
 		}
 		seg := string(runes[i:j])
-		if runes[i] == '░' {
-			seg = m.st.back.Render(seg)
+		switch k {
+		case 1:
+			seg = m.st.back.Render(seg) // ░ pattern: blue
+		case 0:
+			seg = m.st.secondary.Render(seg) // outline / marker: gray
 		}
 		b.WriteString(seg)
 		i = j
