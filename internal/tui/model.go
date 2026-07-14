@@ -751,7 +751,10 @@ func (m *Model) viewContent() string {
 		return ""
 	}
 	if m.kicked != "" {
-		return m.renderKicked()
+		return m.renderKicked() // shown at any size, so a kicked player always sees why
+	}
+	if m.w < minW || m.h < minH {
+		return m.tooSmall()
 	}
 	if m.snap == nil {
 		return m.center(m.st.secondary.Render("connecting..."))

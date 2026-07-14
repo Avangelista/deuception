@@ -11,8 +11,12 @@ import (
 	"github.com/Avangelista/deuception/internal/protocol"
 )
 
-// vs15 requests a text (not emoji) glyph, width-1.
-const vs15 = "︎"
+const (
+	minW = 34
+	minH = 14 // top band 2 + side fans >=5 + bottom (error 1 + hand 4 + footer 1)
+
+	vs15 = "︎" // variation selector-15: request text (not emoji) glyph, width-1
+)
 
 // ---- player letters & labels ----
 
@@ -144,6 +148,13 @@ func botTag(p protocol.PlayerView) string {
 
 // ---- game table (anchored to the screen edges: C top, B left, D right, A
 // bottom, pile centre) ----
+
+// tooSmall is the shared "enlarge your terminal" screen, shown once the window drops
+// below the minimum (the kick screen is exempt - see viewContent).
+func (m *Model) tooSmall() string {
+	return m.center(fmt.Sprintf("enlarge terminal to %dx%d", minW, minH) +
+		"\n" + m.st.secondary.Render(fmt.Sprintf("(now %dx%d)", m.w, m.h)))
+}
 
 func (m *Model) renderGame() string {
 	n := len(m.snap.Players)

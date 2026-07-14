@@ -1039,16 +1039,18 @@ func TestEndScreenDisconnected(t *testing.T) {
 	}
 }
 
-// TestNoMinSizeWindow: a small terminal renders the game, not an "enlarge terminal" screen.
-func TestNoMinSizeWindow(t *testing.T) {
+// TestKickExemptFromMinSize: the kick screen shows even on a tiny terminal, while the
+// game still asks to enlarge below the minimum.
+func TestKickExemptFromMinSize(t *testing.T) {
 	m := New(nopCommander{}, "id", "hint", lipgloss.DefaultRenderer())
-	m.Update(tea.WindowSizeMsg{Width: 20, Height: 8})
+	m.Update(tea.WindowSizeMsg{Width: 20, Height: 8}) // below minW/minH
 	m.Update(protocol.StateSnapshotMsg{Snap: inGameSnap(1, parseHand(t, "3D 5C 9H"))})
-	out := stripStyling(m.View())
-	if strings.Contains(out, "enlarge") {
-		t.Error("min-size window should be gone; small terminals should render the game")
+	if !strings.Contains(stripStyling(m.View()), "enlarge") {
+		t.Error("below the minimum the game should still ask to enlarge")
 	}
-	if !strings.ContainsAny(out, "♦♣♥♠") {
-		t.Errorf("small terminal should still render cards, got:\n%s", out)
+	m.kicked = "game already in progress"
+	out := stripStyling(m.View())
+	if strings.Contains(out, "enlarge") || !strings.Contains(out, "game already in progress") {
+		t.Errorf("kick screen should show on a tiny window, got:\n%s", out)
 	}
 }
