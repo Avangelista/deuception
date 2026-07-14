@@ -150,6 +150,35 @@ func TestMarkerGlyphsSafe(t *testing.T) {
 	}
 }
 
+// TestInactiveFaceDimmed: on your turn a red face is bright red and a black face is
+// primary; when the hand is inactive both recede - red to a muted dark red, black to
+// the border's gray - so the whole hand darkens.
+func TestInactiveFaceDimmed(t *testing.T) {
+	m := colourModel()
+	h := cards("4H", "5S") // red, black
+	paint := func(onTurn bool) string {
+		rows, tags := m.selfFan(h, 0, len(h), 0, onTurn)
+		var b strings.Builder
+		for i := range rows {
+			b.WriteString(m.paintTagged(rows[i], tags[i]))
+		}
+		return b.String()
+	}
+	if on := paint(true); !strings.Contains(on, "\x1b[31m") {
+		t.Errorf("active red face should be bright red: %q", on)
+	}
+	off := paint(false)
+	if strings.Contains(off, "\x1b[31m") {
+		t.Errorf("inactive hand should not use bright red: %q", off)
+	}
+	if !strings.Contains(off, "38;5;124") {
+		t.Errorf("inactive red face should be dim red (124): %q", off)
+	}
+	if !strings.Contains(off, "[90m") && !strings.Contains(off, "38;5;8") {
+		t.Errorf("inactive black face/border should be gray (8): %q", off)
+	}
+}
+
 // TestHFanMatchesDemo2 checks the top opponent's back matches demo2.txt: a ░-filled
 // body and a rounded floor, wide front card leftmost, each card keeping its ╯ corner.
 func TestHFanMatchesDemo2(t *testing.T) {

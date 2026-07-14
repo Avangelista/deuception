@@ -527,11 +527,13 @@ func (m *Model) maxHandCells() int {
 	return n
 }
 
-// colour tags for a composited fan cell: a red card's face (tagRed), and the gray
-// text-hierarchy tiers used by the cursor / scroll flags / self last-play marker.
+// colour tags for a composited fan cell: a red card's face (tagRed, or tagRedDim
+// when the hand is inactive), and the gray text-hierarchy tiers used by borders,
+// cursor, scroll flags, and inactive black faces.
 const (
 	tagPlain uint8 = iota
 	tagRed
+	tagRedDim
 	tagSecondary
 	tagTertiary
 )
@@ -610,11 +612,20 @@ func (m *Model) selfFan(hand []game.Card, start, end, cursor int, showCursor boo
 			put(bodyRow, rb, '│', borderTag)
 			put(botRow, rb, '╯', borderTag)
 		}
-		// Face rank+suit, coloured together (red for hearts/diamonds).
+		// Face rank+suit, coloured together. On your turn: red for hearts/diamonds,
+		// primary for spades/clubs. When the hand is inactive it recedes with the
+		// border - black faces to secondary gray, red faces to a muted dark red.
 		face := hand[i]
-		faceTag := tagPlain
-		if face.Suit.IsRed() {
+		var faceTag uint8
+		switch {
+		case face.Suit.IsRed() && showCursor:
 			faceTag = tagRed
+		case face.Suit.IsRed():
+			faceTag = tagRedDim
+		case showCursor:
+			faceTag = tagPlain
+		default:
+			faceTag = tagSecondary
 		}
 		put(faceRow, L+1, face.Rank.Rune(), faceTag)
 		put(faceRow, L+2, m.suitRune(face.Suit), faceTag)
@@ -649,6 +660,8 @@ func (m *Model) paintTagged(runes []rune, tags []uint8) string {
 		switch t {
 		case tagRed:
 			s = m.st.suitRed.Render(s)
+		case tagRedDim:
+			s = m.st.suitRedDim.Render(s)
 		case tagSecondary:
 			s = m.st.secondary.Render(s)
 		case tagTertiary:
