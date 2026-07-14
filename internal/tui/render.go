@@ -222,7 +222,9 @@ func (m *Model) topBand(n, w int) string {
 	fill, floor := hFan(p.CardCount, w, active)
 	count, letter := m.labelParts(p)
 	floorW := lipgloss.Width(floor)
-	handW := floorW + 1 + m.labelW(p) // floor + " " + count: what the ▴/✗ centre over
+	// Two spaces between the fan and the label, matching the self hand (whose gap holds
+	// the reserved scroll-flag slot). handW is floor + "  " + count: what the ▴/✗ centre over.
+	handW := floorW + 2 + m.labelW(p)
 	// The reaction rides the initial (bottom) row in a reserved zone to the right of the
 	// "hand", so it's outside the region the ▴/✗ centre over and the cue stays put.
 	react := " " + m.emoteZone(p.Seat)
@@ -230,8 +232,8 @@ func (m *Model) topBand(n, w int) string {
 	if active {
 		// Count beside the ░ body; initial (+ reaction) beside the floor. The ▴ turn
 		// pointer sits in the pile gap just below (see pileFloat).
-		row0 := m.paintBack(fill, true) + " " + count
-		row1 := padTo(m.paintBack(floor, true)+" "+letter, handW) + react
+		row0 := m.paintBack(fill, true) + "  " + count
+		row1 := padTo(m.paintBack(floor, true)+"  "+letter, handW) + react
 		return lipgloss.JoinVertical(lipgloss.Left, row0, row1)
 	}
 	// Off turn: the count rides the floor (top row); the initial, the centred status marker
@@ -239,7 +241,7 @@ func (m *Model) topBand(n, w int) string {
 	// (handW, matching the pointer) so it lands at screen centre, aligned with the on-turn
 	// ▴ pointer in the pile gap; the initial sits at the right, clear of the centred mark.
 	markCol := (handW - 1) / 2
-	letterCol := floorW + 1
+	letterCol := floorW + 2
 	gap := letterCol - markCol - 1
 	if gap < 0 {
 		gap = 0
@@ -250,7 +252,7 @@ func (m *Model) topBand(n, w int) string {
 	if mk := m.oppMark(p, "▴"); mk != "" {
 		markGlyph = m.styleMark(mk)
 	}
-	row0 := m.paintBack(floor, false) + " " + count
+	row0 := m.paintBack(floor, false) + "  " + count
 	row1 := padTo(strings.Repeat(" ", markCol)+markGlyph+strings.Repeat(" ", gap)+letter, handW) + react
 	return lipgloss.JoinVertical(lipgloss.Left, row0, row1)
 }
@@ -477,7 +479,7 @@ func (m *Model) pileFloat(w, h int) string {
 			// screen. So offset by handW within a band positioned by totalW, then convert
 			// the screen column to a grid index in the centre column.
 			_, floor := hFan(top.CardCount, m.w, false)
-			handW := lipgloss.Width(floor) + 1 + m.labelW(top)
+			handW := lipgloss.Width(floor) + 2 + m.labelW(top) // floor + "  " + count
 			totalW := handW + 1 + emoteW
 			markerCol := (m.w-totalW)/2 + (handW-1)/2
 			if gc := markerCol - (m.w-w)/2; gc >= 0 && gc < w {
@@ -580,17 +582,21 @@ func (m *Model) selfBand() string {
 	// overwriting the margin. All edits stay in the rune/tag domain so painting can
 	// come last (a byte-slice of a coloured row would corrupt the escapes).
 	for r := range runeRows {
-		runeRows[r] = append([]rune{' ', ' '}, runeRows[r]...)
-		tagRows[r] = append([]uint8{tagPlain, tagPlain}, tagRows[r]...)
+		runeRows[r] = append([]rune{' '}, runeRows[r]...)
+		tagRows[r] = append([]uint8{tagPlain}, tagRows[r]...)
 	}
-	if moreLeft {
-		runeRows[2][0], runeRows[2][1] = '‹', ' '
-		tagRows[2][0] = tagTertiary
+	if moreLeft { // ‹ hugs the first card in the 1-col margin, so it never changes width
+		runeRows[2][0] = '‹'
+		tagRows[2][0] = tagSecondary
 	}
+	// Always reserve the right flag slot (› or a blank) hard against the last card, so
+	// scrolling to/from the end never toggles the band width and shifts the centred hand.
+	rflag, rtag := ' ', uint8(tagPlain)
 	if moreRight {
-		runeRows[2] = append(runeRows[2], ' ', '›')
-		tagRows[2] = append(tagRows[2], tagPlain, tagTertiary)
+		rflag, rtag = '›', tagSecondary
 	}
+	runeRows[2] = append(runeRows[2], rflag)
+	tagRows[2] = append(tagRows[2], rtag)
 	painted := make([]string, len(runeRows))
 	for r := range runeRows {
 		painted[r] = m.paintTagged(runeRows[r], tagRows[r])

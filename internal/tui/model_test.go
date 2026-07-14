@@ -199,6 +199,56 @@ func TestReactPickerToggle(t *testing.T) {
 	}
 }
 
+// TestPickerStaysOpenOnReact: sending a reaction with the picker open leaves it open so
+// you can fire several; r closes it.
+func TestPickerStaysOpenOnReact(t *testing.T) {
+	cc := &captureCommander{}
+	m := New(cc, "id", "hint", lipgloss.DefaultRenderer())
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m.Update(protocol.StateSnapshotMsg{Snap: inGameSnap(1, parseHand(t, "3D 5C 9H"))})
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}}) // open
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}}) // react (why, code 1)
+	if !m.reacting {
+		t.Fatal("the picker should stay open after sending a reaction")
+	}
+	if ec, ok := cc.last().(room.EmoteCmd); !ok || ec.Code != 1 {
+		t.Fatalf("the digit should still send while the picker is open, got %#v", cc.last())
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}}) // close
+	if m.reacting {
+		t.Fatal("r should close the picker")
+	}
+}
+
+// TestScrollNoLayoutShift: scrolling the hand never shifts the cards - the ‹/› more-cards
+// flags occupy reserved slots so the band width (and its centring) stays constant.
+func TestScrollNoLayoutShift(t *testing.T) {
+	m := New(nopCommander{}, "id", "hint", lipgloss.DefaultRenderer())
+	m.Update(tea.WindowSizeMsg{Width: 44, Height: 20})
+	m.Update(protocol.StateSnapshotMsg{Snap: inGameSnap(1,
+		parseHand(t, "3D 3C 4C 5C 6C 7S 8D 9H TC JD JS KH 2S"))})
+	fanCol := func() int {
+		for _, ln := range strings.Split(m.renderGame(), "\n") {
+			s := stripStyling(ln)
+			if strings.ContainsAny(s, "♦♣♥♠") {
+				return lipgloss.Width(s[:strings.IndexRune(s, '│')])
+			}
+		}
+		return -1
+	}
+	var cols []int
+	for _, cur := range []int{0, 3, 6, 9, 12} { // left end .. right end
+		m.cursor = cur
+		m.recomputePlayable()
+		cols = append(cols, fanCol())
+	}
+	for i := 1; i < len(cols); i++ {
+		if cols[i] != cols[0] {
+			t.Errorf("hand shifted while scrolling: first │ at col %d (step %d), want %d", cols[i], i, cols[0])
+		}
+	}
+}
+
 // TestQuitConfirmFlow: esc in-game asks first (no quit); esc cancels, enter confirms.
 func TestQuitConfirmFlow(t *testing.T) {
 	cc := &captureCommander{}

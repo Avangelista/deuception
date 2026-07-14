@@ -469,7 +469,7 @@ func (m *Model) reactKey(k tea.KeyMsg) bool {
 		return false
 	}
 	m.room.Submit(room.EmoteCmd{ID: m.id, Code: int(s[0] - '1')})
-	m.reacting = false // a sent reaction dismisses the picker
+	// The picker stays open after sending, so you can fire several; esc or r closes it.
 	return true
 }
 
