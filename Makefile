@@ -1,4 +1,4 @@
-BIN  := bin/deuception
+BIN  := bin/big2-tui
 PORT ?= 2222
 
 .PHONY: build run test vet preview tidy clean smoke
@@ -22,7 +22,7 @@ tidy:
 	go mod tidy
 
 clean:
-	rm -rf bin deuception.log
+	rm -rf bin big2-tui.log
 
 # Print how to drive a local multi-player smoke test.
 smoke: build

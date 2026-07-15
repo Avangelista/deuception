@@ -1,4 +1,4 @@
-// Command sshprobe connects N clients to a running deuception SSH server, each
+// Command sshprobe connects N clients to a running big2-tui SSH server, each
 // requesting a PTY, and checks the rendered frames - a smoke test for SSH auth,
 // PTY handling, shared-room rendering, and the host-driven start.
 package main

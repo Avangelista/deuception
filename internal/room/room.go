@@ -12,9 +12,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/Avangelista/deuception/internal/bot"
-	"github.com/Avangelista/deuception/internal/game"
-	"github.com/Avangelista/deuception/internal/protocol"
+	"github.com/Avangelista/big2-tui/internal/bot"
+	"github.com/Avangelista/big2-tui/internal/game"
+	"github.com/Avangelista/big2-tui/internal/protocol"
 )
 
 // Seat is one player position in the room. A bot seat is Connected with Bot set

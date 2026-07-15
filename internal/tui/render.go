@@ -7,8 +7,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Avangelista/deuception/internal/game"
-	"github.com/Avangelista/deuception/internal/protocol"
+	"github.com/Avangelista/big2-tui/internal/game"
+	"github.com/Avangelista/big2-tui/internal/protocol"
 )
 
 const (

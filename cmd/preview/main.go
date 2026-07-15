@@ -9,10 +9,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/Avangelista/deuception/internal/game"
-	"github.com/Avangelista/deuception/internal/protocol"
-	"github.com/Avangelista/deuception/internal/room"
-	"github.com/Avangelista/deuception/internal/tui"
+	"github.com/Avangelista/big2-tui/internal/game"
+	"github.com/Avangelista/big2-tui/internal/protocol"
+	"github.com/Avangelista/big2-tui/internal/room"
+	"github.com/Avangelista/big2-tui/internal/tui"
 )
 
 type noopCommander struct{}

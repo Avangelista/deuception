@@ -1,6 +1,6 @@
 # build output
 /bin/
-/deuception
+/big2-tui
 
 # stray binaries from `go build ./cmd/...`
 /server

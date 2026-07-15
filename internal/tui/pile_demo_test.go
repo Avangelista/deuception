@@ -9,7 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 
-	"github.com/Avangelista/deuception/internal/game"
+	"github.com/Avangelista/big2-tui/internal/game"
 )
 
 // colourModel builds a bare Model with a forced-colour renderer for style tests.

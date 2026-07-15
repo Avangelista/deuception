@@ -4,7 +4,7 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/Avangelista/deuception/internal/game"
+	"github.com/Avangelista/big2-tui/internal/game"
 )
 
 func mustCards(t *testing.T, s string) []game.Card {

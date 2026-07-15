@@ -3,7 +3,7 @@ package room
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/Avangelista/deuception/internal/game"
+	"github.com/Avangelista/big2-tui/internal/game"
 )
 
 // Command is a message submitted to a room's actor goroutine; all state mutation

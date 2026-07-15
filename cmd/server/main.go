@@ -1,4 +1,4 @@
-// Command deuception runs a single-room Big 2 game over SSH. Others join with
+// Command big2-tui runs a single-room Big 2 game over SSH. Others join with
 // `ssh <host> -p <port>`; once the game starts, new connections are turned away.
 package main
 
@@ -22,18 +22,18 @@ import (
 	"github.com/muesli/termenv"
 	gossh "golang.org/x/crypto/ssh"
 
-	"github.com/Avangelista/deuception/internal/room"
-	"github.com/Avangelista/deuception/internal/tui"
+	"github.com/Avangelista/big2-tui/internal/room"
+	"github.com/Avangelista/big2-tui/internal/tui"
 )
 
 func main() {
 	port := flag.Int("port", 2222, "SSH port to listen on")
-	hostKey := flag.String("host-key", ".ssh/deuception_ed25519", "SSH host key path (created if missing)")
+	hostKey := flag.String("host-key", ".ssh/big2-tui_ed25519", "SSH host key path (created if missing)")
 	serveOnly := flag.Bool("serve-only", false, "run headless (no local host player); the first person to join becomes host")
 	flag.Parse()
 
 	// Keep logs off the host's terminal so they don't corrupt the TUI.
-	if f, err := os.OpenFile("deuception.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); err == nil {
+	if f, err := os.OpenFile("big2-tui.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); err == nil {
 		clog.SetOutput(f)
 		defer f.Close()
 	}
@@ -60,7 +60,7 @@ func main() {
 	clog.Info("listening", "port", *port, "serveOnly", *serveOnly)
 
 	if *serveOnly {
-		fmt.Printf("deuception serving on :%d - others join with:\n%s\n", *port, joinHint)
+		fmt.Printf("big2-tui serving on :%d - others join with:\n%s\n", *port, joinHint)
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 		go func() {

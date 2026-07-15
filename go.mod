@@ -1,4 +1,4 @@
-module github.com/Avangelista/deuception
+module github.com/Avangelista/big2-tui
 
 go 1.25.0
 

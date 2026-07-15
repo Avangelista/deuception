@@ -4,7 +4,7 @@ A networked, terminal Big 2 (Deuces / 鋤大弟). One binary is both the game an
 server: you run it, land in a waiting room, and friends join over SSH, nothing to
 install.
 
-![deuception: a four-player hand in progress in the terminal](preview.png)
+![big2-tui: a four-player hand in progress in the terminal](preview.png)
 
 ## Requirements
 
@@ -16,7 +16,7 @@ install.
 ```sh
 make run # build + start on :2222; you host and play locally
 # or
-go build -o bin/deuception ./cmd/server && ./bin/deuception -port 2222
+go build -o bin/big2-tui ./cmd/server && ./bin/big2-tui -port 2222
 ```
 
 You land on a waiting page; others join from their own terminals:
@@ -32,7 +32,7 @@ everything lives in memory; stop the binary and the room is gone.
 Headless (no local host, so the first person to connect becomes host):
 
 ```sh
-./bin/deuception -serve-only -port 2222
+./bin/big2-tui -serve-only -port 2222
 ```
 
 ## Controls

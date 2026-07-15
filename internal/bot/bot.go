@@ -5,7 +5,7 @@ package bot
 import (
 	"math/rand"
 
-	"github.com/Avangelista/deuception/internal/game"
+	"github.com/Avangelista/big2-tui/internal/game"
 )
 
 // Move is a bot's decision. Pass (no cards) is only legal while following.

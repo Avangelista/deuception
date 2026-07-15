@@ -9,9 +9,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 
-	"github.com/Avangelista/deuception/internal/game"
-	"github.com/Avangelista/deuception/internal/protocol"
-	"github.com/Avangelista/deuception/internal/room"
+	"github.com/Avangelista/big2-tui/internal/game"
+	"github.com/Avangelista/big2-tui/internal/protocol"
+	"github.com/Avangelista/big2-tui/internal/room"
 )
 
 // TestBossHidePlainAndAligned: the boss-key frame carries no escapes and every row

@@ -5,7 +5,7 @@ package protocol
 import (
 	"time"
 
-	"github.com/Avangelista/deuception/internal/game"
+	"github.com/Avangelista/big2-tui/internal/game"
 )
 
 // RevealHold is the standard beat a resolved moment rests on screen before the
