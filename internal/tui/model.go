@@ -466,14 +466,20 @@ func isLetter(b byte) bool {
 // off turn, with or without the picker open) and reports whether it handled the key.
 func (m *Model) reactKey(k tea.KeyMsg) bool {
 	s := k.String()
-	if len(s) != 1 || s[0] < '0' || s[0] > '9' {
+	code := -1
+	switch {
+	case len(s) == 1 && s[0] >= '1' && s[0] <= '9':
+		code = int(s[0]-'0') - 1 // 1-9 -> presets 0-8
+	case s == "0":
+		code = 9 // 0 -> preset 10
+	case s == "-":
+		code = 10 // - -> preset 11
+	case s == "=" || s == "+":
+		code = 11 // = (labelled +) -> preset 12
+	default:
 		return false
 	}
-	code := int(s[0]-'0') - 1 // keys 1-9 -> presets 0-8
-	if s[0] == '0' {
-		code = 9 // 0 -> the tenth preset
-	}
-	if code < 0 || code >= len(protocol.Emotes) {
+	if code >= len(protocol.Emotes) {
 		return false
 	}
 	m.room.Submit(room.EmoteCmd{ID: m.id, Code: code})

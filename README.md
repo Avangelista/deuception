@@ -43,7 +43,7 @@ difficulty, `+`/`-` add/remove a bot (host), `esc` quit.
 **In-game:** `←`/`→` move the cursor (or scroll your hand when it isn't your turn),
 `space` select/deselect, `enter` play the selection (or the card under the cursor if
 nothing is selected), `x` pass, `c` clear selection, `s` sort by rank or suit,
-`1`-`0` send a quick reaction (`r` pages through the list), `esc` quit (asks to confirm).
+`1`-`0` and `-`/`=` send a quick reaction (`r` pages through the list), `esc` quit (asks to confirm).
 On your turn only the cards you can legally play stay lit; the cursor skips the rest.
 
 **Between hands:** `enter` deals the next hand (host, once enough players remain),
