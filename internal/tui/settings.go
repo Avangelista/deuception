@@ -332,10 +332,10 @@ func (m *Model) reactionCell(idx int) string {
 }
 
 // settingsCursor is the 2-column active-row marker (blank when inactive), fixed width so
-// it never shifts the row.
+// it never shifts the row. It uses the same dot as the in-game hand cursor.
 func (m *Model) settingsCursor(active bool) string {
 	if active {
-		return m.st.primary.Render("> ")
+		return m.st.primary.Render("∙ ")
 	}
 	return "  "
 }
