@@ -1,6 +1,7 @@
 // Package room hosts a single, in-memory Big 2 room. One actor goroutine owns
 // all mutable state; sessions submit Commands and get per-viewer redacted
-// snapshots. Nothing is persisted.
+// snapshots. The live game is in-memory only; preferences (house rules, reaction
+// labels, and remembered letters) are saved through an optional Persister.
 package room
 
 import (
@@ -23,12 +24,55 @@ import (
 // and a nil Prog, so it is skipped by fanout and never swept as a dropout.
 type Seat struct {
 	ID        string
+	Identity  string // stable cross-session identity (SSH key fingerprint, or LocalIdentity); "" if none
 	Prog      *tea.Program
 	Connected bool
 	Host      bool
 	Bot       bool
 	Letter    byte // chosen display letter, unique per room
 	Score     int  // cumulative penalty across hands (lower is better)
+}
+
+// LocalIdentity is the fixed identity of the local host player, who has no SSH key.
+const LocalIdentity = "local"
+
+// Persister saves the room's preferences whenever they change. A nil persister (the
+// default) disables persistence, which the tests rely on.
+type Persister interface {
+	Save(rules game.Rules, reactions []string, letters map[string]string)
+}
+
+// Option configures a Room at construction, before its actor goroutine starts.
+type Option func(*Room)
+
+// WithPersister makes the room save its preferences on every change.
+func WithPersister(p Persister) Option { return func(r *Room) { r.persister = p } }
+
+// WithSavedPrefs seeds a room from persisted preferences: the ruleset (sanitised), the
+// reaction labels (only if the expected count), and the remembered letters.
+func WithSavedPrefs(rules game.Rules, reactions []string, letters map[string]string) Option {
+	return func(r *Room) {
+		r.rules = rules.Sanitized()
+		if len(reactions) == len(protocol.Emotes) {
+			r.reactions = sanitizeReactions(reactions)
+		}
+		for k, v := range letters {
+			r.letters[k] = v
+		}
+	}
+}
+
+// sanitizeReactions keeps each valid label and falls back to the default for any that is
+// blank or too long, so a hand-edited prefs file can't break rendering.
+func sanitizeReactions(in []string) []string {
+	out := protocol.DefaultReactions()
+	for i := range out {
+		s := strings.TrimSpace(in[i])
+		if s != "" && utf8.RuneCountInString(s) <= protocol.MaxReactionLen {
+			out[i] = s
+		}
+	}
+	return out
 }
 
 // Room is a single game room served to many connections.
@@ -44,13 +88,15 @@ type Room struct {
 	seats        []*Seat
 	game         *game.GameState
 	phase        protocol.Phase
-	rules        game.Rules   // host-configured house rules; applied to each hand
-	reactions    []string     // room-wide reaction labels (host-configurable)
-	lastWinnerID string       // winner of the previous hand, for the winner-leads rule
-	rev          int          // monotonic snapshot revision; lets clients drop out-of-order sends
-	turnToken    int          // bumped whenever a bot is scheduled; invalidates stale timers
-	trickToken   int          // bumped whenever a trick hold is scheduled; invalidates stale timers
-	trickReveal  *trickReveal // set while a won trick is held on screen before it clears
+	rules        game.Rules        // host-configured house rules; applied to each hand
+	reactions    []string          // room-wide reaction labels (host-configurable)
+	letters      map[string]string // identity -> last picked letter, restored on rejoin
+	persister    Persister         // saves prefs on change; nil disables persistence
+	lastWinnerID string            // winner of the previous hand, for the winner-leads rule
+	rev          int               // monotonic snapshot revision; lets clients drop out-of-order sends
+	turnToken    int               // bumped whenever a bot is scheduled; invalidates stale timers
+	trickToken   int               // bumped whenever a trick hold is scheduled; invalidates stale timers
+	trickReveal  *trickReveal      // set while a won trick is held on screen before it clears
 }
 
 // trickReveal is the just-completed trick, held briefly so the winning card and the
@@ -62,8 +108,9 @@ type trickReveal struct {
 	passed []bool // who passed, including the final pass that ended the trick
 }
 
-// New starts a room actor. maxSeats caps the table, minStart is the fewest that can start.
-func New(maxSeats, minStart int, rng *mrand.Rand) *Room {
+// New starts a room actor. maxSeats caps the table, minStart is the fewest that can
+// start. Options seed persisted preferences and a persister before the actor runs.
+func New(maxSeats, minStart int, rng *mrand.Rand, opts ...Option) *Room {
 	r := &Room{
 		cmds:       make(chan Command, 64),
 		maxSeats:   maxSeats,
@@ -71,8 +118,12 @@ func New(maxSeats, minStart int, rng *mrand.Rand) *Room {
 		rng:        rng,
 		phase:      protocol.Waiting,
 		reactions:  protocol.DefaultReactions(),
+		letters:    map[string]string{},
 		botDelay:   time.Second,
 		trickDelay: protocol.RevealHold,
+	}
+	for _, o := range opts {
+		o(r)
 	}
 	go r.run()
 	return r
@@ -186,7 +237,7 @@ func (r *Room) handleJoin(c JoinCmd) {
 	}
 	// First to join is host (covers serve-only mode with no local host seat).
 	isHost := c.Host || len(r.seats) == 0
-	seat := &Seat{ID: c.ID, Prog: c.Prog, Connected: true, Host: isHost, Letter: r.randomFreeLetter()}
+	seat := &Seat{ID: c.ID, Identity: c.Identity, Prog: c.Prog, Connected: true, Host: isHost, Letter: r.rememberedLetter(c.Identity)}
 	r.seats = append(r.seats, seat)
 	r.fanout()
 }
@@ -501,8 +552,15 @@ func (r *Room) handleSetLetter(c SetLetterCmd) {
 		return
 	}
 	L := upperByte(c.Letter)
-	if L < 'A' || L > 'Z' || L == s.Letter {
-		r.fanout() // invalid or unchanged: let the client snap back to the truth
+	if L < 'A' || L > 'Z' {
+		r.fanout() // invalid: let the client snap back to the truth
+		return
+	}
+	if L == s.Letter {
+		// No change, but an explicit pick of the current (maybe auto-assigned) letter
+		// still counts, so it is remembered for next session.
+		r.rememberLetter(s)
+		r.fanout()
 		return
 	}
 	var holder *Seat
@@ -520,7 +578,19 @@ func (r *Room) handleSetLetter(c SetLetterCmd) {
 	if holder != nil { // a bot held it: humans win, bump the bot elsewhere
 		holder.Letter = r.randomFreeLetter()
 	}
+	r.rememberLetter(s)
 	r.fanout()
+}
+
+// rememberLetter persists a seat's current letter under its identity for next session.
+// No-op for an anonymous seat or when that letter is already saved (avoids a redundant
+// write).
+func (r *Room) rememberLetter(s *Seat) {
+	if s.Identity == "" || r.letters[s.Identity] == string(s.Letter) {
+		return
+	}
+	r.letters[s.Identity] = string(s.Letter)
+	r.persist()
 }
 
 func (r *Room) handleAddBot(c AddBotCmd) {
@@ -626,7 +696,8 @@ func (r *Room) handleSetRules(c SetRulesCmd) {
 	if s == nil || !s.Host || r.phase != protocol.Waiting {
 		return
 	}
-	r.rules = c.Rules
+	r.rules = c.Rules.Sanitized() // never trust a client to send an in-range enum
+	r.persist()
 	r.fanout()
 }
 
@@ -646,7 +717,52 @@ func (r *Room) handleSetReaction(c SetReactionCmd) {
 		return
 	}
 	r.reactions[c.Index] = text
+	r.persist()
 	r.fanout()
+}
+
+// rememberedLetter returns identity's saved letter when it can be claimed (free, or held
+// only by a bot that gets bumped), otherwise a random free one. Empty identities are
+// never remembered.
+func (r *Room) rememberedLetter(identity string) byte {
+	if identity != "" {
+		if s, ok := r.letters[identity]; ok && len(s) == 1 {
+			if L := upperByte(s[0]); L >= 'A' && L <= 'Z' && r.claimLetter(L) {
+				return L
+			}
+		}
+	}
+	return r.randomFreeLetter()
+}
+
+// claimLetter reports whether L is available for a joining seat, bumping a bot that
+// holds it (humans outrank bots, as in handleSetLetter). A human holder blocks the claim.
+// Call before the new seat is appended, so it can't conflict with itself.
+func (r *Room) claimLetter(L byte) bool {
+	for _, s := range r.seats {
+		if s.Letter != L {
+			continue
+		}
+		if s.Bot {
+			s.Letter = r.randomFreeLetter() // bump the bot elsewhere
+			return true
+		}
+		return false // a human holds it
+	}
+	return true // free
+}
+
+// persist snapshots the room's preferences and hands them to the persister (if any) to
+// save. Called on the actor goroutine after any pref change.
+func (r *Room) persist() {
+	if r.persister == nil {
+		return
+	}
+	letters := make(map[string]string, len(r.letters))
+	for k, v := range r.letters {
+		letters[k] = v
+	}
+	r.persister.Save(r.rules, append([]string(nil), r.reactions...), letters)
 }
 
 func (r *Room) fanout() {

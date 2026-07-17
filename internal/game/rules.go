@@ -53,6 +53,25 @@ type Rules struct {
 // DefaultRules is the classic ruleset (all zero values).
 func DefaultRules() Rules { return Rules{} }
 
+// Sanitized resets any out-of-range field to its default, so a ruleset read from an
+// untrusted source (a hand-edited prefs file) can't index past an option list. The
+// fields are unsigned, so only the upper bound needs checking.
+func (r Rules) Sanitized() Rules {
+	if r.Straights > StraightsHongKong {
+		r.Straights = StraightsBig2
+	}
+	if r.Flush > FlushBySuit {
+		r.Flush = FlushByHighCard
+	}
+	if r.Pass > PassReenter {
+		r.Pass = PassLockout
+	}
+	if r.Lead > LeadWinner {
+		r.Lead = LeadLowCard
+	}
+	return r
+}
+
 // straight reports whether five Order-sorted cards form a straight under the style,
 // returning a comparison rank (higher beats lower, within a style) and the card whose
 // suit breaks ties.

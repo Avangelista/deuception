@@ -11,11 +11,13 @@ import (
 type Command interface{ isCmd() }
 
 // JoinCmd asks to seat a connection. Prog pushes state back to it; Host marks the
-// local host.
+// local host. Identity is a stable cross-session id (SSH key fingerprint, or
+// LocalIdentity for the host) used to restore the player's last letter; "" if none.
 type JoinCmd struct {
-	ID   string
-	Prog *tea.Program
-	Host bool
+	ID       string
+	Identity string
+	Prog     *tea.Program
+	Host     bool
 }
 
 // StartCmd (host only) starts the game if enough players are seated.

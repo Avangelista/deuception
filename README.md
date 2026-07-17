@@ -26,8 +26,9 @@ ssh -p 2222 <your-host>
 ```
 
 The host presses **enter** to start once 2+ players are in, and can fill empty
-seats with bots first (`+`). After that, new connections are turned away, and
-everything lives in memory; stop the binary and the room is gone.
+seats with bots first (`+`). After that, new connections are turned away, and the
+live game stays in memory; stop the binary and the room is gone (though house rules
+and remembered letters persist, see below).
 
 Headless (no local host, so the first person to connect becomes host):
 
@@ -79,6 +80,12 @@ the defaults reproduce the classic game, and the choice is locked once a hand be
   still opens on the `3♦`).
 - **Reactions.** The twelve quick-chat labels (bound to `1`-`0` and `-`/`=`) are
   host-set, up to five characters each, and shared by everyone in the room.
+
+These settings, plus each player's last-picked letter, are saved to
+`big2-tui.prefs.json` beside the binary and restored on the next run. A returning
+player is recognised by their SSH key (the local host by a fixed identity), so they
+get their previous letter back when it's free; anyone connecting without a key just
+gets a random one.
 
 ## Layout
 

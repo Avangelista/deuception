@@ -220,6 +220,19 @@ func TestLeadWinner(t *testing.T) {
 	}
 }
 
+// TestSanitized clamps out-of-range fields (from an untrusted prefs file) to defaults
+// while leaving valid rulesets untouched.
+func TestSanitized(t *testing.T) {
+	valid := Rules{Straights: StraightsHongKong, Flush: FlushBySuit, Pass: PassReenter, Lead: LeadWinner}
+	if got := valid.Sanitized(); got != valid {
+		t.Errorf("valid ruleset changed by Sanitized: %+v", got)
+	}
+	bad := Rules{Straights: 200, Flush: 9, Pass: 3, Lead: 7}
+	if got := bad.Sanitized(); got != (Rules{}) {
+		t.Errorf("out-of-range ruleset = %+v, want all defaults", got)
+	}
+}
+
 // TestDefaultRulesIsClassic guards the invariant the whole refactor rests on: the zero
 // value reproduces the classic straight and pass behaviour.
 func TestDefaultRulesIsClassic(t *testing.T) {

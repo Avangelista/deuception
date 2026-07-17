@@ -15,5 +15,8 @@
 *.out
 /ui-preview.txt
 
+# persisted preferences (written beside the binary)
+big2-tui.prefs.json*
+
 # macOS
 .DS_Store
