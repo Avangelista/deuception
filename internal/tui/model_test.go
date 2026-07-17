@@ -273,7 +273,7 @@ func TestQuitConfirmFlow(t *testing.T) {
 	if m.confirmQuit {
 		t.Fatal("a second esc should cancel the confirm")
 	}
-	m.Update(tea.KeyMsg{Type: tea.KeyEsc})            // raise again
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})             // raise again
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter}) // confirm
 	if _, ok := cc.last().(room.QuitCmd); !ok {
 		t.Fatalf("enter should quit, got %#v", cc.last())
@@ -1097,6 +1097,25 @@ func TestScoreScreenReactions(t *testing.T) {
 	}
 	if seen != 1 {
 		t.Errorf("reaction should appear on exactly one row, got %d", seen)
+	}
+}
+
+// TestScoreScreenNoReactionShift: the reaction column is always reserved, so a reaction
+// appearing keeps the score board a fixed size and never re-centres/shifts it.
+func TestScoreScreenNoReactionShift(t *testing.T) {
+	players := []protocol.PlayerView{
+		{Seat: 0, Letter: 'A', IsYou: true, IsHost: true, Connected: true, Score: 0},
+		{Seat: 1, Letter: 'B', Connected: true, Score: 7},
+		{Seat: 2, Letter: 'C', Connected: true, Score: 14},
+	}
+	m := New(nopCommander{}, "id", "hint", lipgloss.DefaultRenderer())
+	m.Update(tea.WindowSizeMsg{Width: 50, Height: 16})
+	m.Update(protocol.StateSnapshotMsg{Snap: overSnap(players)})
+
+	idle := contentTopLeft(stripStyling(m.renderOver()))
+	m.emotes = map[int]emoteState{1: {3, 1}} // B reacts
+	if reacting := contentTopLeft(stripStyling(m.renderOver())); reacting != idle {
+		t.Errorf("a reaction shifted the score board: idle top-left %v, reacting %v", idle, reacting)
 	}
 }
 
