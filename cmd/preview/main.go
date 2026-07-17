@@ -169,7 +169,7 @@ func main() {
 		Players: []protocol.PlayerView{
 			{Seat: 0, Letter: 'R', IsYou: true, IsHost: true, Connected: true},
 			{Seat: 1, Letter: 'K', Connected: true},
-			{Seat: 2, Letter: 'Q', IsBot: true, BotLevel: 7, Connected: true},
+			{Seat: 2, Letter: 'Q', IsBot: true, Connected: true},
 		},
 		Turn: -1, Winner: -1,
 	}
@@ -188,7 +188,7 @@ func main() {
 			{Seat: 0, CardCount: 0, IsYou: true, IsHost: true, Connected: true, Score: 0},
 			{Seat: 1, CardCount: 7, Connected: true, Score: 14},
 			{Seat: 2, CardCount: 3, Connected: true, Score: 3},
-			{Seat: 3, CardCount: 13, Connected: true, Score: 52, IsBot: true, BotLevel: 4},
+			{Seat: 3, CardCount: 13, Connected: true, Score: 52, IsBot: true},
 		},
 		Turn: -1, Winner: 0,
 	}

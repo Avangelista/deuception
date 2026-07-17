@@ -37,7 +37,7 @@ func followGame(t *testing.T, hand0, table, leaderCards string) *game.GameState 
 // TestChooseMovePassesWhenStuck: no legal play means the bot passes.
 func TestChooseMovePassesWhenStuck(t *testing.T) {
 	g := followGame(t, "3C 3S 8D", "4H 4S", "9C 9H TC")
-	mv := ChooseMove(g, 0, 9, rand.New(rand.NewSource(1)))
+	mv := ChooseMove(g, 0)
 	if !mv.Pass {
 		t.Fatalf("expected pass with no beating play, got %v", mv.Cards)
 	}
@@ -48,7 +48,7 @@ func TestChooseMovePassesWhenStuck(t *testing.T) {
 func TestChooseMoveHoldsBombWhenSafe(t *testing.T) {
 	// Only 2S beats the 9 on the table; leader holds 5 cards (not threatening).
 	g := followGame(t, "2S 3C 4D 5D 6D 7C 8C", "9H", "TC JC QC KC AC")
-	mv := ChooseMove(g, 0, 9, rand.New(rand.NewSource(1)))
+	mv := ChooseMove(g, 0)
 	if !mv.Pass {
 		t.Fatalf("strong bot should hold its 2, got %v", mv.Cards)
 	}
@@ -58,7 +58,7 @@ func TestChooseMoveHoldsBombWhenSafe(t *testing.T) {
 // the bot spends the same 2 to break the trick.
 func TestChooseMoveSpendsBombWhenLeaderThreatens(t *testing.T) {
 	g := followGame(t, "2S 3C 4D 5D 6D 7C 8C", "9H", "TC JC") // leader down to 2 cards
-	mv := ChooseMove(g, 0, 9, rand.New(rand.NewSource(1)))
+	mv := ChooseMove(g, 0)
 	if mv.Pass {
 		t.Fatal("bot should spend its 2 while the leader is threatening")
 	}
@@ -67,8 +67,8 @@ func TestChooseMoveSpendsBombWhenLeaderThreatens(t *testing.T) {
 	}
 }
 
-// TestChooseMovePlaysFullGame is the property test: across many seeds and mixed
-// difficulties the bot never produces an illegal move and every game terminates.
+// TestChooseMovePlaysFullGame is the property test: across many seeds the bot never
+// produces an illegal move and every game terminates.
 func TestChooseMovePlaysFullGame(t *testing.T) {
 	for seed := int64(1); seed <= 60; seed++ {
 		rng := rand.New(rand.NewSource(seed))
@@ -78,8 +78,7 @@ func TestChooseMovePlaysFullGame(t *testing.T) {
 		}
 		for step := 0; step < 1000 && !g.Finished; step++ {
 			seat := g.Turn
-			level := 1 + int(seat) // seats run at difficulty 1..4
-			mv := ChooseMove(g, seat, level, rng)
+			mv := ChooseMove(g, seat)
 			var err error
 			if mv.Pass {
 				_, err = g.Pass(seat)

@@ -25,7 +25,6 @@ type Seat struct {
 	Connected bool
 	Host      bool
 	Bot       bool
-	BotLevel  int  // 1-9 difficulty when Bot
 	Letter    byte // chosen display letter, unique per room
 	Score     int  // cumulative penalty across hands (lower is better)
 }
@@ -454,7 +453,7 @@ func (r *Room) handleBotAct(c BotActCmd) {
 	if c.Seat < 0 || c.Seat >= len(r.seats) || !r.seats[c.Seat].Bot || int(r.game.Turn) != c.Seat {
 		return
 	}
-	mv := bot.ChooseMove(r.game, game.Seat(c.Seat), r.seats[c.Seat].BotLevel, r.rng)
+	mv := bot.ChooseMove(r.game, game.Seat(c.Seat))
 	table, passed := r.game.Table, append([]bool(nil), r.game.Passed...)
 	var evs []game.Event
 	var err error
@@ -516,15 +515,8 @@ func (r *Room) handleAddBot(c AddBotCmd) {
 		safeSend(s.Prog, protocol.ErrorMsg{Text: "room is full"})
 		return
 	}
-	level := c.Level
-	if level < 1 {
-		level = 5
-	}
-	if level > 9 {
-		level = 9
-	}
 	r.seats = append(r.seats, &Seat{
-		ID: NewID(), Connected: true, Bot: true, BotLevel: level, Letter: r.randomFreeLetter(),
+		ID: NewID(), Connected: true, Bot: true, Letter: r.randomFreeLetter(),
 	})
 	r.fanout()
 }
@@ -629,7 +621,6 @@ func (r *Room) snapshotFor(viewer int) protocol.StateSnapshot {
 			IsYou:     i == viewer,
 			IsHost:    s.Host,
 			IsBot:     s.Bot,
-			BotLevel:  s.BotLevel,
 			Score:     s.Score,
 		}
 		if r.game != nil {

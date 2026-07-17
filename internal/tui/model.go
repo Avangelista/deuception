@@ -49,8 +49,6 @@ type Model struct {
 	boss       bool // hide the card UI (blank the borders so the board reads as plain text)
 	kicked     string
 
-	pendingBotLevel int // difficulty applied to the next added bot (1-9)
-
 	reacting    bool               // the quick-chat picker is open (footer shows the presets)
 	reactPage   int                // which preset page the picker shows; r cycles, digits stay absolute
 	confirmQuit bool               // esc in-game asks first; enter confirms, esc cancels
@@ -88,7 +86,6 @@ func New(r commander, id, joinHint string, renderer *lipgloss.Renderer) *Model {
 		asciiSuits:      resolveASCIISuits(),
 		selected:        map[int]bool{},
 		emotes:          map[int]emoteState{},
-		pendingBotLevel: 5,
 	}
 }
 
@@ -442,15 +439,11 @@ func (m *Model) keyWaiting(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case key == "+" || key == "=": // '=' is the unshifted '+' key
 		if m.snap.IsHost {
-			m.room.Submit(room.AddBotCmd{ID: m.id, Level: m.pendingBotLevel})
+			m.room.Submit(room.AddBotCmd{ID: m.id})
 		}
 	case key == "-":
 		if m.snap.IsHost {
 			m.room.Submit(room.RemoveBotCmd{ID: m.id})
-		}
-	case len(key) == 1 && key[0] >= '1' && key[0] <= '9':
-		if m.snap.IsHost {
-			m.pendingBotLevel = int(key[0] - '0')
 		}
 	case len(key) == 1 && isLetter(key[0]):
 		m.room.Submit(room.SetLetterCmd{ID: m.id, Letter: key[0]}) // server enforces uniqueness

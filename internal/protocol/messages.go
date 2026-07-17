@@ -28,7 +28,7 @@ type StateSnapshotMsg struct{ Snap StateSnapshot }
 
 // Emotes are the fixed quick-chat phrases a player can send, indexed by the Code in an
 // EmoteMsg. Kept short (<=5 cols) so each sits beside a player's label.
-var Emotes = []string{"bro", "lol", "why", "gg", "play", "low", "high", "dubs", "trips", "five", "that", "f you"}
+var Emotes = []string{"bro", "lol", "why", "gg", "play", "low", "high", "dubs", "trips", "five", "f you", "ty"}
 
 // EmoteMsg broadcasts a quick-chat reaction from Seat to every session; the client
 // flashes Emotes[Code] beside that seat for a beat. Public - never redacted.
@@ -78,7 +78,6 @@ type PlayerView struct {
 	IsTurn    bool
 	IsHost    bool
 	IsBot     bool
-	BotLevel  int  // 1-9 difficulty when IsBot; 0 otherwise
 	Passed    bool // passed (locked out) in the current trick
 	Score     int
 }

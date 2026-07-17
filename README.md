@@ -37,8 +37,8 @@ Headless (no local host, so the first person to connect becomes host):
 
 ## Controls
 
-**Waiting room:** `a`-`z` pick your letter, `enter` start (host), `1`-`9` set bot
-difficulty, `+`/`-` add/remove a bot (host), `esc` quit.
+**Waiting room:** `a`-`z` pick your letter, `enter` start (host), `+`/`-` add/remove
+a bot (host, always full strength), `esc` quit.
 
 **In-game:** `←`/`→` move the cursor (or scroll your hand when it isn't your turn),
 `space` select/deselect, `enter` play the selection (or the card under the cursor if

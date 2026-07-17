@@ -39,10 +39,9 @@ type SetLetterCmd struct {
 	Letter byte
 }
 
-// AddBotCmd (host only, waiting room) seats a bot at difficulty Level (1-9).
+// AddBotCmd (host only, waiting room) seats a bot. Bots always play at full strength.
 type AddBotCmd struct {
-	ID    string
-	Level int
+	ID string
 }
 
 // RemoveBotCmd (host only, waiting room) removes the most-recently-added bot.

@@ -18,8 +18,8 @@ func TestBotActStaleTokenIgnored(t *testing.T) {
 
 	host := NewID()
 	r.Submit(JoinCmd{ID: host, Host: true})
-	r.Submit(AddBotCmd{ID: host, Level: 5})
-	r.Submit(AddBotCmd{ID: host, Level: 5})
+	r.Submit(AddBotCmd{ID: host})
+	r.Submit(AddBotCmd{ID: host})
 	r.Submit(StartCmd{ID: host})
 
 	snap := r.Query(host)
@@ -203,15 +203,15 @@ func TestAddAndRemoveBot(t *testing.T) {
 	r := New(4, 2, mrand.New(mrand.NewSource(1)))
 	host := NewID()
 	r.Submit(JoinCmd{ID: host, Host: true})
-	r.Submit(AddBotCmd{ID: host, Level: 8})
+	r.Submit(AddBotCmd{ID: host})
 
 	snap := r.Query(host)
 	if len(snap.Players) != 2 {
 		t.Fatalf("players after add = %d, want 2", len(snap.Players))
 	}
 	b := snap.Players[1]
-	if !b.IsBot || b.BotLevel != 8 {
-		t.Fatalf("seat 1: IsBot=%v level=%d, want bot level 8", b.IsBot, b.BotLevel)
+	if !b.IsBot {
+		t.Fatalf("seat 1: IsBot=%v, want a bot", b.IsBot)
 	}
 	if b.Letter == snap.Players[0].Letter || b.Letter < 'A' || b.Letter > 'Z' {
 		t.Fatalf("bot letter %q collides or is out of range", b.Letter)
@@ -220,7 +220,7 @@ func TestAddAndRemoveBot(t *testing.T) {
 	// A non-host may neither add nor remove bots.
 	p2 := NewID()
 	r.Submit(JoinCmd{ID: p2})
-	r.Submit(AddBotCmd{ID: p2, Level: 3})
+	r.Submit(AddBotCmd{ID: p2})
 	if n := len(r.Query(host).Players); n != 3 {
 		t.Fatalf("non-host add changed the table (players=%d, want 3)", n)
 	}
@@ -269,7 +269,7 @@ func TestHumanBumpsBotLetter(t *testing.T) {
 	r := New(4, 2, mrand.New(mrand.NewSource(3)))
 	host := NewID()
 	r.Submit(JoinCmd{ID: host, Host: true})
-	r.Submit(AddBotCmd{ID: host, Level: 5})
+	r.Submit(AddBotCmd{ID: host})
 
 	snap := r.Query(host)
 	if !snap.Players[1].IsBot {
@@ -326,7 +326,7 @@ func TestBotPlaysThroughActor(t *testing.T) {
 	host := NewID()
 	r.Submit(JoinCmd{ID: host, Host: true})
 	for i := 0; i < 3; i++ {
-		r.Submit(AddBotCmd{ID: host, Level: 6})
+		r.Submit(AddBotCmd{ID: host})
 	}
 	r.Submit(StartCmd{ID: host})
 

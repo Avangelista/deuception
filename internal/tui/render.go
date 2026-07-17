@@ -138,10 +138,10 @@ func youHostTag(p protocol.PlayerView) string {
 	return ""
 }
 
-// botTag labels a bot seat as "(lvl N bot)", or "" for a human.
+// botTag labels a bot seat as "(bot)", or "" for a human.
 func botTag(p protocol.PlayerView) string {
 	if p.IsBot {
-		return fmt.Sprintf("(lvl %d bot)", p.BotLevel)
+		return "(bot)"
 	}
 	return ""
 }
@@ -954,7 +954,7 @@ func (m *Model) renderWaiting() string {
 	}
 	legend := []string{"a-z    pick letter"}
 	if s.IsHost {
-		legend = append(legend, fmt.Sprintf("1-9    bot level (%d)", m.pendingBotLevel), "+/-    add/remove bot")
+		legend = append(legend, "+/-    add/remove bot")
 	}
 	legend = append(legend, "esc    quit")
 	b.WriteString("\n" + m.st.secondary.Render(strings.Join(legend, "\n")))
