@@ -38,7 +38,7 @@ Headless (no local host, so the first person to connect becomes host):
 ## Controls
 
 **Waiting room:** `a`-`z` pick your letter, `enter` start (host), `+`/`-` add/remove
-a bot (host, always full strength), `esc` quit.
+a bot (host, always full strength), `o` house-rules settings (host), `esc` quit.
 
 **In-game:** `←`/`→` move the cursor (or scroll your hand when it isn't your turn),
 `space` select/deselect, `enter` play the selection (or the card under the cursor if
@@ -49,22 +49,36 @@ On your turn only the cards you can legally play stay lit; the cursor skips the 
 **Between hands:** `enter` deals the next hand (host, once enough players remain),
 `esc` quit.
 
-## Rules (this build)
+## Rules
 
 - Ranks `3 4 5 6 7 8 9 10 J Q K A 2`; suits `♦ < ♣ < ♥ < ♠`.
 - Plays are 1, 2, 3, or 5 cards; five-card hands rank
   straight < flush < full house < four-of-a-kind < straight flush.
-- Straights run in rank order and top out at 2; the highest is `J-Q-K-A-2` and the
-  lowest `3-4-5-6-7` (no ace-low wrap).
-- The first play of a hand must include the lowest dealt card (the `3♦` when it's
-  in play).
-- Passing is locked out: once you pass you're done until the trick resolves.
 - Scored match: each hand, you take penalty points for the cards left in your hand
   (×2 at 8 to 9, ×3 at 10 to 12, ×4 at 13+). Totals carry over and the host deals
   again with **enter**; lowest total wins.
 - Drop out mid-hand and your seat auto-passes as a dead player (`⊘`); between hands
   you're shown as disconnected and dropped from the next deal, as long as enough
   players are left (otherwise the host can only quit). No rejoining.
+
+### House rules
+
+The host mixes these on the settings page (`o` in the waiting room) before starting;
+the defaults reproduce the classic game, and the choice is locked once a hand begins.
+
+- **Straights.** *big 2* (default): rank order topping out at 2, highest `J-Q-K-A-2`,
+  lowest `3-4-5-6-7`, no ace-low wrap. *poker*: `A-2-3-4-5` lowest up through
+  `10-J-Q-K-A` highest, no `J-Q-K-A-2`. *hong kong*: the poker set, but the two
+  2-wraps rank highest (`A-2-3-4-5` tops everything, then `2-3-4-5-6`).
+- **Flushes.** *high card* (default): highest card wins, suit breaks ties.
+  *suit then card*: the flush's suit ranks first, then by card.
+- **Passing.** *lockout* (default): once you pass you're out until the trick resolves.
+  *re-enter*: a pass only skips your turn, and a fresh play reopens the round.
+- **First play.** *low card* (default): the `3♦` holder opens every hand and must play
+  it. *winner leads*: the previous hand's winner opens the next hand freely (hand 1
+  still opens on the `3♦`).
+- **Reactions.** The twelve quick-chat labels (bound to `1`-`0` and `-`/`=`) are
+  host-set, up to five characters each, and shared by everyone in the room.
 
 ## Layout
 
