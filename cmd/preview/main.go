@@ -92,6 +92,22 @@ func renderPile(title string, w, h int, base protocol.StateSnapshot, plays []str
 	fmt.Println(strings.Repeat("-", w))
 }
 
+// renderSettings opens the host settings page (o from the waiting room) and prints it,
+// with the cursor moved down `down` rows so a rule row shows its adjustable state.
+func renderSettings(title string, w, h int, snap protocol.StateSnapshot, down int) {
+	m := tui.New(noopCommander{}, "rory", "ssh -p 2222 192.168.1.20", lipgloss.DefaultRenderer())
+	m.Update(tea.WindowSizeMsg{Width: w, Height: h})
+	m.Update(protocol.StateSnapshotMsg{Snap: snap})
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'o'}}) // open the settings page
+	for range down {
+		m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	}
+	fmt.Printf("\n===== %s (%dx%d) =====\n", title, w, h)
+	fmt.Println(strings.Repeat("-", w))
+	fmt.Println(m.View())
+	fmt.Println(strings.Repeat("-", w))
+}
+
 // renderBoss renders a snapshot with the hide-card-UI toggle on (borders blanked).
 func renderBoss(title string, w, h int, snap protocol.StateSnapshot) {
 	m := tui.New(noopCommander{}, "rory", "ssh -p 2222 192.168.1.20", lipgloss.DefaultRenderer())
@@ -162,6 +178,12 @@ func main() {
 	}
 	render("waiting room (host, 3 joined)", 80, 24, waiting, 0, "")
 	render("waiting room (34 wide)", 34, 18, waiting, 0, "")
+
+	// Host settings page: a non-default ruleset, cursor on a rule row.
+	settings := waiting
+	settings.Reactions = protocol.DefaultReactions()
+	settings.Rules = game.Rules{Straights: game.StraightsPoker, Flush: game.FlushBySuit, Pass: game.PassReenter, Lead: game.LeadWinner}
+	renderSettings("host settings page (rule row active)", 60, 26, settings, 1)
 
 	// Waiting room with chosen letters and a bot seated.
 	withBots := protocol.StateSnapshot{
