@@ -1115,3 +1115,42 @@ func TestReactOnScoreScreen(t *testing.T) {
 		t.Fatalf("a digit on the score screen should send EmoteCmd code 1, got %#v", cc.last())
 	}
 }
+
+// TestCustomReactionLabelsRender: the client shows the room's host-set reaction labels
+// (snap.Reactions), not the built-in defaults, both as a flashed reaction and in the
+// picker footer.
+func TestCustomReactionLabelsRender(t *testing.T) {
+	labels := protocol.DefaultReactions()
+	labels[0], labels[1] = "wow", "nope"
+
+	players := []protocol.PlayerView{
+		{Seat: 0, Letter: 'R', IsYou: true, IsTurn: true, CardCount: 9, Connected: true},
+		{Seat: 1, Letter: 'A', CardCount: 5, Connected: true},
+		{Seat: 2, Letter: 'B', CardCount: 8, Connected: true},
+		{Seat: 3, Letter: 'C', CardCount: 4, Connected: true},
+	}
+	snap := protocol.StateSnapshot{Phase: protocol.InGame, Rev: 1, YouSeat: 0,
+		Players: players, YourHand: parseHand(t, "3D 4C 5C 6C 7S 8D 9H TC 2S"),
+		Turn: 0, TableBy: -1, Winner: -1, Reactions: labels}
+
+	m := New(nopCommander{}, "id", "hint", lipgloss.DefaultRenderer())
+	m.Update(tea.WindowSizeMsg{Width: 72, Height: 22})
+	m.Update(protocol.StateSnapshotMsg{Snap: snap})
+
+	// A flashed reaction uses the custom label, not the default.
+	m.emotes = map[int]emoteState{1: {0, 1}} // left opponent reacts preset 0
+	frame := stripStyling(m.renderGame())
+	if !strings.Contains(frame, "wow") {
+		t.Errorf("custom reaction label %q missing from frame", "wow")
+	}
+	if strings.Contains(frame, protocol.Emotes[0]) {
+		t.Errorf("default label %q should be replaced by the custom one", protocol.Emotes[0])
+	}
+
+	// The picker footer lists the custom labels too.
+	m.reacting, m.reactPage = true, 0
+	footer := stripStyling(m.gameFooter(72))
+	if !strings.Contains(footer, "wow") || !strings.Contains(footer, "nope") {
+		t.Errorf("picker footer should list custom labels, got %q", footer)
+	}
+}

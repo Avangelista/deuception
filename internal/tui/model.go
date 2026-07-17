@@ -633,7 +633,7 @@ func (m *Model) computePlayable() {
 		m.playable = nil
 		return
 	}
-	m.playable = game.PlayableSet(m.hand(), m.selectedCards(), m.snap.Table, m.snap.Opening, m.snap.OpenCard, game.DefaultRules())
+	m.playable = game.PlayableSet(m.hand(), m.selectedCards(), m.snap.Table, m.snap.Opening, m.snap.OpenCard, m.snap.Rules)
 }
 
 // recomputePlayable rebuilds the playable set and places the cursor. When your turn has

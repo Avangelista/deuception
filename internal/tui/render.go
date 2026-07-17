@@ -57,11 +57,29 @@ func (m *Model) labelW(p protocol.PlayerView) int {
 // emoteW is the reserved column width for a reaction beside a label - the longest preset.
 const emoteW = 5
 
+// reactionLabels is the room's host-set reaction labels, or the defaults before the
+// first snapshot arrives.
+func (m *Model) reactionLabels() []string {
+	if m.snap != nil && len(m.snap.Reactions) == len(protocol.Emotes) {
+		return m.snap.Reactions
+	}
+	return protocol.Emotes
+}
+
+// reactionLabel is the label for reaction code, or "" when out of range.
+func (m *Model) reactionLabel(code int) string {
+	labels := m.reactionLabels()
+	if code < 0 || code >= len(labels) {
+		return ""
+	}
+	return labels[code]
+}
+
 // emoteFor returns the active quick-chat phrase for an absolute seat, or "" when none is
 // showing.
 func (m *Model) emoteFor(seat int) string {
-	if e, ok := m.emotes[seat]; ok && e.code >= 0 && e.code < len(protocol.Emotes) {
-		return protocol.Emotes[e.code]
+	if e, ok := m.emotes[seat]; ok {
+		return m.reactionLabel(e.code)
 	}
 	return ""
 }
@@ -71,10 +89,14 @@ func (m *Model) emoteFor(seat int) string {
 // Reactions read primary even off turn - a reaction should pop whoever's turn it is.
 func (m *Model) emoteZone(seat int) string {
 	e := m.emoteFor(seat)
-	if len(e) > emoteW {
-		e = e[:emoteW]
+	if lipgloss.Width(e) > emoteW { // host labels are unicode; clip by display width, not bytes
+		e = ansi.Truncate(e, emoteW, "")
 	}
-	return m.st.primary.Render(e + strings.Repeat(" ", emoteW-len(e)))
+	pad := emoteW - lipgloss.Width(e)
+	if pad < 0 {
+		pad = 0
+	}
+	return m.st.primary.Render(e + strings.Repeat(" ", pad))
 }
 
 // labelBlock stacks the count over the initial, aligned to a (Left for the self hand
@@ -1059,7 +1081,7 @@ func (m *Model) gameFooter(w int) string {
 		return "quit?  enter yes  esc no"
 	}
 	if m.reacting {
-		return emotePicker(w, m.reactPage)
+		return emotePicker(w, m.reactPage, m.reactionLabels())
 	}
 	full := "arrows move  space pick  enter play  x pass  s sort  r react  esc quit"
 	if lipgloss.Width(full) <= w {
@@ -1089,17 +1111,17 @@ func emoteKey(i int) string {
 
 // emotePicker is the quick-chat legend for one page: each preset on its key, with r
 // cycling pages and esc closing. The keys fire regardless of which page is showing.
-func emotePicker(w, page int) string {
+func emotePicker(w, page int, labels []string) string {
 	if page < 0 || page >= len(emotePages) {
 		page = 0
 	}
 	lo, hi := emotePages[page][0], emotePages[page][1]
-	if hi > len(protocol.Emotes) {
-		hi = len(protocol.Emotes)
+	if hi > len(labels) {
+		hi = len(labels)
 	}
 	var parts []string
 	for i := lo; i < hi; i++ {
-		parts = append(parts, fmt.Sprintf("%s %s", emoteKey(i), protocol.Emotes[i]))
+		parts = append(parts, fmt.Sprintf("%s %s", emoteKey(i), labels[i]))
 	}
 	full := strings.Join(parts, "  ") + "  r more  esc back" // two spaces between options, like the legend
 	if lipgloss.Width(full) <= w {
