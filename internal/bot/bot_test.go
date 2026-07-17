@@ -95,3 +95,57 @@ func TestChooseMovePlaysFullGame(t *testing.T) {
 		}
 	}
 }
+
+// TestChooseMovePlaysEveryConfig fuzzes the bot across every house-rules combination
+// and player count: whatever the rules, its moves stay legal and games terminate. This
+// guards the invariant that the bot enumerates from the same ruleset the engine judges.
+func TestChooseMovePlaysEveryConfig(t *testing.T) {
+	straights := []game.StraightStyle{game.StraightsBig2, game.StraightsPoker, game.StraightsHongKong}
+	flushes := []game.FlushRank{game.FlushByHighCard, game.FlushBySuit}
+	passes := []game.PassRule{game.PassLockout, game.PassReenter}
+	leads := []game.LeadRule{game.LeadLowCard, game.LeadWinner}
+	for _, s := range straights {
+		for _, f := range flushes {
+			for _, p := range passes {
+				for _, l := range leads {
+					rules := game.Rules{Straights: s, Flush: f, Pass: p, Lead: l}
+					for _, seats := range []int{2, 3, 4} {
+						for seed := int64(1); seed <= 4; seed++ {
+							playBotGame(t, rules, seats, seed)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+// playBotGame deals under rules and drives every seat with the bot to completion,
+// failing on any illegal move or a game that never finishes.
+func playBotGame(t *testing.T, rules game.Rules, seats int, seed int64) {
+	t.Helper()
+	g := game.NewGame(seats, rules)
+	if err := g.Deal(rand.New(rand.NewSource(seed))); err != nil {
+		t.Fatalf("rules %+v seats %d seed %d: deal: %v", rules, seats, seed, err)
+	}
+	if rules.Lead == game.LeadWinner {
+		g.LeadFrom(game.Seat(seed % int64(seats))) // exercise the free winner-lead opening
+	}
+	for step := 0; step < 4000 && !g.Finished; step++ {
+		seat := g.Turn
+		mv := ChooseMove(g, seat)
+		var err error
+		if mv.Pass {
+			_, err = g.Pass(seat)
+		} else {
+			_, err = g.Play(seat, mv.Cards)
+		}
+		if err != nil {
+			t.Fatalf("rules %+v seats %d seed %d step %d: illegal move (pass=%v cards=%v): %v",
+				rules, seats, seed, step, mv.Pass, mv.Cards, err)
+		}
+	}
+	if !g.Finished {
+		t.Fatalf("rules %+v seats %d seed %d: game never finished", rules, seats, seed)
+	}
+}
