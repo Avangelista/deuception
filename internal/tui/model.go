@@ -55,6 +55,11 @@ type Model struct {
 	emotes      map[int]emoteState // active reaction per absolute seat, flashed beside its label
 	emoteGen    int                // bumped per reaction so a stale timer can't clear a newer one
 
+	settingsOpen bool   // the host's settings page is showing (waiting room only)
+	settingsRow  int    // cursor row on the settings page (rule rows then reaction rows)
+	editing      bool   // a reaction label is being edited inline
+	editBuf      string // the label being typed while editing
+
 	pileCur    []game.Card    // the play currently shown in the pile
 	pilePrev   []game.Card    // the play it beat, drawn under the slide (same size within a trick)
 	pileDir    [2]int         // unit direction the current play slides in from
@@ -78,14 +83,14 @@ const emoteHold = 2 * time.Second
 // New builds a Model; renderer must be session-scoped (MakeRenderer for SSH).
 func New(r commander, id, joinHint string, renderer *lipgloss.Renderer) *Model {
 	return &Model{
-		room:            r,
-		id:              id,
-		joinHint:        joinHint,
-		r:               renderer,
-		st:              newStyles(renderer),
-		asciiSuits:      resolveASCIISuits(),
-		selected:        map[int]bool{},
-		emotes:          map[int]emoteState{},
+		room:       r,
+		id:         id,
+		joinHint:   joinHint,
+		r:          renderer,
+		st:         newStyles(renderer),
+		asciiSuits: resolveASCIISuits(),
+		selected:   map[int]bool{},
+		emotes:     map[int]emoteState{},
 	}
 }
 
@@ -205,6 +210,11 @@ func (m *Model) applySnapshot(s protocol.StateSnapshot) tea.Cmd {
 		prevHand = m.snap.YourHand
 	}
 	m.snap = &s
+	// The settings page lives only in the waiting room; leaving it (game started, etc.)
+	// closes any open page and cancels an in-progress edit.
+	if s.Phase != protocol.Waiting {
+		m.settingsOpen, m.editing = false, false
+	}
 	// Reset selection/hint/scroll when the hand's contents change; keying on size
 	// alone would miss an equal-size redeal and carry stale indices into it.
 	if !sameHand(prevHand, s.YourHand) {
@@ -401,6 +411,10 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	// The settings page captures every key (including esc) until it is closed.
+	if m.settingsOpen {
+		return m.keySettings(k)
+	}
 	if k.String() == "esc" {
 		switch {
 		case m.reacting: // esc first dismisses the quick-chat picker
@@ -445,6 +459,8 @@ func (m *Model) keyWaiting(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.snap.IsHost {
 			m.room.Submit(room.RemoveBotCmd{ID: m.id})
 		}
+	case key == "o" && m.snap.IsHost:
+		m.openSettings() // the host's house-rules page
 	case len(key) == 1 && isLetter(key[0]):
 		m.room.Submit(room.SetLetterCmd{ID: m.id, Letter: key[0]}) // server enforces uniqueness
 	}
@@ -775,6 +791,9 @@ func (m *Model) viewContent() string {
 	}
 	switch m.snap.Phase {
 	case protocol.Waiting:
+		if m.settingsOpen && m.snap.IsHost {
+			return m.renderSettings()
+		}
 		return m.renderWaiting()
 	case protocol.InGame:
 		return m.renderGame()

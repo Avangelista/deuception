@@ -976,7 +976,7 @@ func (m *Model) renderWaiting() string {
 	}
 	legend := []string{"a-z    pick letter"}
 	if s.IsHost {
-		legend = append(legend, "+/-    add/remove bot")
+		legend = append(legend, "+/-    add/remove bot", "o      settings")
 	}
 	legend = append(legend, "esc    quit")
 	b.WriteString("\n" + m.st.secondary.Render(strings.Join(legend, "\n")))
