@@ -446,17 +446,20 @@ func (m *Model) handleKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) keyWaiting(k tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.reactKey(k) { // digits / - / = fire a reaction, as on the score screen
+		return m, nil
+	}
 	key := k.String()
 	switch {
 	case key == "enter":
 		if m.snap.IsHost {
 			m.room.Submit(room.StartCmd{ID: m.id})
 		}
-	case key == "+" || key == "=": // '=' is the unshifted '+' key
+	case key == "." || key == ">": // add a bot ('.' unshifted, labelled '>')
 		if m.snap.IsHost {
 			m.room.Submit(room.AddBotCmd{ID: m.id})
 		}
-	case key == "-":
+	case key == "," || key == "<": // remove a bot (',' unshifted, labelled '<')
 		if m.snap.IsHost {
 			m.room.Submit(room.RemoveBotCmd{ID: m.id})
 		}

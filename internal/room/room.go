@@ -679,9 +679,7 @@ func (r *Room) handleGameWon() {
 // handleEmote broadcasts a quick-chat reaction to every session; a fresh reaction from
 // a player replaces their previous one. Reactions are public, so no redaction is involved.
 func (r *Room) handleEmote(c EmoteCmd) {
-	if r.phase != protocol.InGame && r.phase != protocol.Finished {
-		return // reactions live during a hand and on the score screen
-	}
+	// Reactions live in every phase: the waiting room, a hand, and the score screen.
 	idx := r.seatIndexByID(c.ID)
 	if idx < 0 || c.Code < 0 || c.Code >= len(r.reactions) {
 		return

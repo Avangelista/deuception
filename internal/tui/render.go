@@ -945,9 +945,17 @@ func vFanRight(count, budget int, active bool) []string {
 func (m *Model) renderWaiting() string {
 	s := m.snap
 	var b strings.Builder
+	// Build roster rows first, so a reaction (flashed beside a player's row, as on the
+	// score screen) can go in an always-reserved column and never shift the roster.
+	type rosterRow struct {
+		text string
+		seat int // -1 for an empty slot (no reaction column)
+	}
+	var rows []rosterRow
+	maxW := 0
 	for i := 0; i < s.MaxSeats; i++ {
 		if i >= len(s.Players) {
-			b.WriteString(m.st.tertiary.Render("-") + "\n") // empty seat recedes
+			rows = append(rows, rosterRow{m.st.tertiary.Render("-"), -1}) // empty seat recedes
 			continue
 		}
 		p := s.Players[i]
@@ -961,7 +969,16 @@ func (m *Model) renderWaiting() string {
 		if !p.Connected {
 			line += m.st.tertiary.Render(" (gone)")
 		}
-		b.WriteString(line + "\n")
+		rows = append(rows, rosterRow{line, p.Seat})
+		if w := lipgloss.Width(line); w > maxW {
+			maxW = w
+		}
+	}
+	for _, r := range rows {
+		if r.seat >= 0 {
+			r.text += strings.Repeat(" ", maxW-lipgloss.Width(r.text)) + "  " + m.emoteZone(r.seat)
+		}
+		b.WriteString(r.text + "\n")
 	}
 	b.WriteString("\n")
 	// Status first, so the host always sees how to start (or why they can't yet).
@@ -976,7 +993,7 @@ func (m *Model) renderWaiting() string {
 	}
 	legend := []string{"a-z    pick letter"}
 	if s.IsHost {
-		legend = append(legend, "+/-    add/remove bot", "~      settings")
+		legend = append(legend, "</>    remove/add bot", "~      settings")
 	}
 	legend = append(legend, "esc    quit")
 	b.WriteString("\n" + m.st.secondary.Render(strings.Join(legend, "\n")))
